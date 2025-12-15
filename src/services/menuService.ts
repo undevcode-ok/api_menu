@@ -157,6 +157,69 @@ export const getMenuById = async (
   }
 };
 
+export const getPublicMenuById = async (id: number) => {
+  if (!id) throw new ApiError("ID de menú inválido", 400);
+
+  try {
+    const menu = await MenuM.findOne({
+      where: { id, active: true },
+      attributes: ["id", "title", "logo", "backgroundImage", "color", "pos"],
+      include: [
+        {
+          model: Category,
+          as: "categories",
+          required: false,
+          where: { active: true },
+          attributes: ["id", "title", "position"],
+          include: [
+            {
+              model: Item,
+              as: "items",
+              required: false,
+              where: { active: true },
+              attributes: ["id", "title", "description", "price", "position"],
+              include: [
+                {
+                  model: ItemImage,
+                  as: "images",
+                  required: false,
+                  where: { active: true },
+                  attributes: ["id", "url", "alt", "sortOrder"],
+                  separate: true,
+                  order: [
+                    ["sortOrder", "ASC"],
+                    ["id", "ASC"],
+                  ],
+                },
+              ],
+              order: [["position", "ASC"]],
+            },
+          ],
+          order: [["position", "ASC"]],
+        },
+      ],
+      order: [
+        [{ model: Category, as: "categories" }, "position", "ASC"],
+        [
+          { model: Category, as: "categories" },
+          { model: Item, as: "items" },
+          "position",
+          "ASC",
+        ],
+      ],
+    });
+
+    if (!menu) {
+      throw new ApiError("Menu not found or inactive", 404, { id });
+    }
+
+    return menu;
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError("Error al obtener menú público", 500, { id }, err);
+  }
+};
+
 /** Crear menú (con logo y background opcionales) */
 export const createMenu = async (
   userId: number,

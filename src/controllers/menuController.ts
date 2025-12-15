@@ -16,15 +16,7 @@ const MIN_QR_SIZE = 128;
 const MAX_QR_SIZE = 1024;
 const RAW_PUBLIC_MENU_BASE = (process.env.PUBLIC_MENU_BASE_URL ?? "").trim();
 
-function buildMenuPublicUrl(req: Request, subdomain: string | null, menuId: number) {
-  const tenantSlug = (subdomain ?? "").trim();
-  if (!tenantSlug) {
-    throw new ApiError(
-      "El tenant no tiene un subdominio configurado, no se puede generar un QR compartible.",
-      409
-    );
-  }
-
+function buildMenuPublicUrl(req: Request, menuId: number) {
   const host = req.get("x-forwarded-host") ?? req.get("host");
   if (!RAW_PUBLIC_MENU_BASE && !host) {
     throw new ApiError(
@@ -45,8 +37,7 @@ function buildMenuPublicUrl(req: Request, subdomain: string | null, menuId: numb
     });
   }
 
-  url.searchParams.set("tenant", tenantSlug);
-  url.searchParams.set("menuId", menuId.toString());
+  url.searchParams.set("id", menuId.toString());
 
   return url.toString();
 }
@@ -117,7 +108,6 @@ export const deleteMenu = async (req: Request, res: Response, next: NextFunction
 export const getMenuQr = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.tenant!.id;
-    const subdomain = req.tenant!.subdomain ?? null;
     const menuId = Number(req.params.id);
 
     const menu = await menuService.getMenuBasicInfo(userId, menuId);
@@ -145,7 +135,7 @@ export const getMenuQr = async (req: Request, res: Response, next: NextFunction)
       size = parsed;
     }
 
-    const targetUrl = buildMenuPublicUrl(req, subdomain, menu.id);
+    const targetUrl = buildMenuPublicUrl(req, menu.id);
     const qrResponse = await requestQr({ data: targetUrl, format, size });
 
     if (qrResponse.kind === "binary") {
@@ -171,6 +161,16 @@ export const importMenuCsv = async (req: Request, res: Response, next: NextFunct
     const file = req.file as Express.Multer.File | undefined;
     const summary = await importMenuFromCsv(userId, menuId, file);
     res.status(201).json(summary);
+  } catch (e) {
+    next(e);
+  }
+};
+
+export const getPublicMenu = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const menuId = Number(req.params.id);
+    const menu = await menuService.getPublicMenuById(menuId);
+    res.json(menu);
   } catch (e) {
     next(e);
   }

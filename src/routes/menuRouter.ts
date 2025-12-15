@@ -11,7 +11,7 @@ import { csvUpload } from "../middlewares/csvUpload";
 const menuRouter = Router();
 
 menuRouter.get("/", isAuthenticated, getAllMenus);
-menuRouter.get("/:id/qr", isAuthenticated, getMenuQr);
+menuRouter.get("/:id/qr", getMenuQr);
 menuRouter.post("/:id/import-csv", isAuthenticated, csvUpload.single("file"), importMenuCsv);
 menuRouter.get("/:id", isAuthenticated, getMenuById);
 menuRouter.post("/", isAuthenticated, uploadMiddleware.any(),parseMultipartPayload, validate(createMenuSchema), createMenu);

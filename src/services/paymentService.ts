@@ -28,7 +28,7 @@ export const updatePayment = async (id: number, data: UpdatePaymentDto) => {
 };
 
 export const deletePayment = async (id: number) => {
-  const payment = await Payment.findOne({ where: { id, active: true } });
+  const payment = await Payment.findOne({ where: { id } });
   if (!payment) throw new ApiError("Payment not found", 404);
   await payment.update({ active: false });
   return { message: "Payment disabled successfully" };

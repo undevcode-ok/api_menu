@@ -149,11 +149,22 @@ async function resolveItemPositionWithGaps(
  * Busca un ítem por ID asegurando que pertenezca al usuario (tenant),
  * navegando Item -> Category -> Menu.userId.
  */
-async function findItemForUser(userId: number, itemId: number) {
+async function findItemForUser(
+  userId: number,
+  itemId: number,
+  options: { activeOnly?: boolean } = {}
+) {
   if (!itemId) throw new ApiError("ID de ítem inválido", 400);
 
+  const { activeOnly = true } = options;
+  const where: any = { id: itemId };
+  if (activeOnly) where.active = true;
+
+  const menuWhere: any = { userId };
+  if (activeOnly) menuWhere.active = true;
+
   const item = await ItemM.findOne({
-    where: { id: itemId, active: true },
+    where,
     include: [
       {
         model: CategoryM,
@@ -162,7 +173,7 @@ async function findItemForUser(userId: number, itemId: number) {
           {
             model: MenuM,
             as: "menu",
-            where: { userId, active: true },
+            where: menuWhere,
           },
         ],
       },
@@ -358,7 +369,7 @@ export const updateItem = async (
 };
 
 export const deleteItem = async (userId: number, id: number) => {
-  const item = await findItemForUser(userId, id);
+  const item = await findItemForUser(userId, id, { activeOnly: false });
 
   try {
     await deleteItemImagesFromS3(((item as any).images ?? []) as ItemImage[]);

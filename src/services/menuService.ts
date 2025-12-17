@@ -162,29 +162,26 @@ export const getPublicMenuById = async (id: number) => {
 
   try {
     const menu = await MenuM.findOne({
-      where: { id, active: true },
-      attributes: ["id", "title", "logo", "backgroundImage", "color", "pos"],
+      where: { id },
+      attributes: ["id", "title", "logo", "backgroundImage", "color", "pos", "active"],
       include: [
         {
           model: Category,
           as: "categories",
           required: false,
-          where: { active: true },
-          attributes: ["id", "title", "position"],
+          attributes: ["id", "title", "position", "active"],
           include: [
             {
               model: Item,
               as: "items",
               required: false,
-              where: { active: true },
-              attributes: ["id", "title", "description", "price", "position"],
+              attributes: ["id", "title", "description", "price", "position", "active"],
               include: [
                 {
                   model: ItemImage,
                   as: "images",
                   required: false,
-                  where: { active: true },
-                  attributes: ["id", "url", "alt", "sortOrder"],
+                  attributes: ["id", "url", "alt", "sortOrder", "active"],
                   separate: true,
                   order: [
                     ["sortOrder", "ASC"],
@@ -210,7 +207,7 @@ export const getPublicMenuById = async (id: number) => {
     });
 
     if (!menu) {
-      throw new ApiError("Menu not found or inactive", 404, { id });
+      throw new ApiError("Menu not found", 404, { id });
     }
 
     return menu;

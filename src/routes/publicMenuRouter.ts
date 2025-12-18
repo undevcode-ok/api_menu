@@ -3,6 +3,6 @@ import { getPublicMenu } from "../controllers/menuController";
 
 const publicMenuRouter = Router();
 
-publicMenuRouter.get("/:id", getPublicMenu);
+publicMenuRouter.get("/:publicId", getPublicMenu);
 
 export default publicMenuRouter;

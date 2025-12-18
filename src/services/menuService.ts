@@ -157,13 +157,13 @@ export const getMenuById = async (
   }
 };
 
-export const getPublicMenuById = async (id: number) => {
-  if (!id) throw new ApiError("ID de menú inválido", 400);
+export const getPublicMenuByPublicId = async (publicId: string) => {
+  if (!publicId) throw new ApiError("ID de menú inválido", 400);
 
   try {
     const menu = await MenuM.findOne({
-      where: { id },
-      attributes: ["id", "title", "logo", "backgroundImage", "color", "pos", "active"],
+      where: { publicId },
+      attributes: ["id", "publicId", "title", "logo", "backgroundImage", "color", "pos", "active"],
       include: [
         {
           model: Category,
@@ -207,13 +207,13 @@ export const getPublicMenuById = async (id: number) => {
     });
 
     if (!menu) {
-      throw new ApiError("Menu not found", 404, { id });
+      throw new ApiError("Menu not found", 404, { publicId });
     }
 
     return menu;
   } catch (err: any) {
     if (err instanceof ApiError) throw err;
-    throw new ApiError("Error al obtener menú público", 500, { id }, err);
+    throw new ApiError("Error al obtener menú público", 500, { publicId }, err);
   }
 };
 

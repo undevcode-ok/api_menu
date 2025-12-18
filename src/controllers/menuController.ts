@@ -16,7 +16,7 @@ const MIN_QR_SIZE = 128;
 const MAX_QR_SIZE = 1024;
 const RAW_PUBLIC_MENU_BASE = (process.env.PUBLIC_MENU_BASE_URL ?? "").trim();
 
-function buildMenuPublicUrl(req: Request, menuId: number) {
+function buildMenuPublicUrl(req: Request, menuPublicId: string) {
   const host = req.get("x-forwarded-host") ?? req.get("host");
   if (!RAW_PUBLIC_MENU_BASE && !host) {
     throw new ApiError(
@@ -37,7 +37,7 @@ function buildMenuPublicUrl(req: Request, menuId: number) {
     });
   }
 
-  url.searchParams.set("id", menuId.toString());
+  url.searchParams.set("id", menuPublicId);
 
   return url.toString();
 }
@@ -135,7 +135,7 @@ export const getMenuQr = async (req: Request, res: Response, next: NextFunction)
       size = parsed;
     }
 
-    const targetUrl = buildMenuPublicUrl(req, menu.id);
+    const targetUrl = buildMenuPublicUrl(req, menu.publicId);
     const qrResponse = await requestQr({ data: targetUrl, format, size });
 
     if (qrResponse.kind === "binary") {
@@ -168,8 +168,11 @@ export const importMenuCsv = async (req: Request, res: Response, next: NextFunct
 
 export const getPublicMenu = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const menuId = Number(req.params.id);
-    const menu = await menuService.getPublicMenuById(menuId);
+    const publicId = (req.params.publicId ?? req.params.id ?? "").trim();
+    if (!publicId) {
+      throw new ApiError("ID de menú inválido", 400);
+    }
+    const menu = await menuService.getPublicMenuByPublicId(publicId);
     res.json(menu);
   } catch (e) {
     next(e);

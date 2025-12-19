@@ -4,6 +4,7 @@ import * as menuService from "../services/menuService";
 import { ApiError } from "../utils/ApiError";
 import { QrFormat, requestQr } from "../services/qrService";
 import { importMenuFromCsv } from "../services/menuImportService";
+import { RequestLogger } from "../utils/requestLogger";
 
 /* ===========================
  * Controladores
@@ -106,6 +107,7 @@ export const deleteMenu = async (req: Request, res: Response, next: NextFunction
 };
 
 export const getMenuQr = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
     const userId = req.tenant!.id;
     const menuId = Number(req.params.id);
@@ -135,21 +137,46 @@ export const getMenuQr = async (req: Request, res: Response, next: NextFunction)
       size = parsed;
     }
 
+    reqLogger.info("Generating QR for menu", {
+      tenantId: userId,
+      menuId,
+      menuPublicId: menu.publicId,
+      format,
+      size,
+    });
+
     const targetUrl = buildMenuPublicUrl(req, menu.publicId);
     const qrResponse = await requestQr({ data: targetUrl, format, size });
 
     if (qrResponse.kind === "binary") {
+      reqLogger.info("QR generation succeeded (binary)", {
+        menuId,
+        format,
+        size,
+        contentType: qrResponse.contentType,
+      });
       res.setHeader("Content-Type", qrResponse.contentType);
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Content-Disposition", `inline; filename="menu-${menu.id}-qr.${format}"`);
       return res.send(qrResponse.buffer);
     }
 
+    reqLogger.info("QR generation succeeded (json)", {
+      menuId,
+      format,
+      size,
+      providerResponseType: qrResponse.kind,
+    });
+
     return res.json({
       targetUrl,
       providerResponse: qrResponse.payload,
     });
   } catch (e) {
+    reqLogger.error("Failed to generate QR", {
+      menuId: Number(req.params.id),
+      error: e instanceof Error ? e.message : "unknown",
+    });
     next(e);
   }
 };
@@ -167,14 +194,22 @@ export const importMenuCsv = async (req: Request, res: Response, next: NextFunct
 };
 
 export const getPublicMenu = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
     const publicId = (req.params.publicId ?? req.params.id ?? "").trim();
     if (!publicId) {
       throw new ApiError("ID de menú inválido", 400);
     }
+    reqLogger.info("Fetching public menu", {
+      publicId,
+    });
     const menu = await menuService.getPublicMenuByPublicId(publicId);
     res.json(menu);
   } catch (e) {
+    reqLogger.error("Failed to fetch public menu", {
+      publicId: req.params.publicId ?? req.params.id,
+      error: e instanceof Error ? e.message : "unknown",
+    });
     next(e);
   }
 };

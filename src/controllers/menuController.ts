@@ -6,6 +6,8 @@ import { QrFormat, requestQr } from "../services/qrService";
 import { importMenuFromCsv } from "../services/menuImportService";
 import { RequestLogger } from "../utils/requestLogger";
 
+const errorMessage = (error: unknown) => (error instanceof Error ? error.message : "unknown");
+
 /* ===========================
  * Controladores
  * =========================== */
@@ -44,24 +46,38 @@ function buildMenuPublicUrl(req: Request, menuPublicId: string) {
 }
 
 export const getAllMenus = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
+    reqLogger.info("Listing menus", { tenantId: req.tenant!.id });
     const menus = await menuService.getAllMenus(req.tenant!.id);
+    reqLogger.info("Menus listed", { tenantId: req.tenant!.id, count: menus.length });
     res.json(menus);
   } catch (e) {
+    reqLogger.error("Failed to list menus", { error: errorMessage(e) });
     next(e);
   }
 };
 
 export const getMenuById = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
-    const menu = await menuService.getMenuById(req.tenant!.id, Number(req.params.id));
+    const menuId = Number(req.params.id);
+    reqLogger.info("Fetching menu", { tenantId: req.tenant!.id, menuId });
+    const menu = await menuService.getMenuById(req.tenant!.id, menuId);
+    reqLogger.info("Menu fetched", { tenantId: req.tenant!.id, menuId });
     res.json(menu);
   } catch (e) {
+    reqLogger.error("Failed to fetch menu", {
+      tenantId: req.tenant?.id,
+      menuId: Number(req.params.id),
+      error: errorMessage(e),
+    });
     next(e);
   }
 };
 
 export const createMenu = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
     const userId = req.tenant!.id;
     const files = (req.files ?? []) as Express.Multer.File[];
@@ -69,39 +85,59 @@ export const createMenu = async (req: Request, res: Response, next: NextFunction
     // 💡 req.body YA viene validado y normalizado por Zod (createMenuSchema)
     const data = req.body as any;
 
+    reqLogger.info("Creating menu", { tenantId: userId });
     const created = await menuService.createMenu(userId, data, files);
+    reqLogger.info("Menu created", { tenantId: userId, menuId: created.id, publicId: created.publicId });
     res.status(201).json(created);
   } catch (e) {
+    reqLogger.error("Failed to create menu", {
+      tenantId: req.tenant?.id,
+      error: errorMessage(e),
+    });
     next(e);
   }
 };
 
 export const updateMenu = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
     const userId = req.tenant!.id;
     const files = (req.files ?? []) as Express.Multer.File[];
 
     // 💡 req.body YA viene validado y normalizado por Zod (updateMenuSchema)
     const data = req.body as any;
+    const menuId = Number(req.params.id);
 
-    const updated = await menuService.updateMenu(
-      userId,
-      Number(req.params.id),
-      data,
-      files
-    );
+    reqLogger.info("Updating menu", { tenantId: userId, menuId });
+    const updated = await menuService.updateMenu(userId, menuId, data, files);
+    reqLogger.info("Menu updated", { tenantId: userId, menuId });
 
     res.json(updated);
   } catch (e) {
+    reqLogger.error("Failed to update menu", {
+      tenantId: req.tenant?.id,
+      menuId: Number(req.params.id),
+      error: errorMessage(e),
+    });
     next(e);
   }
 };
 
 export const deleteMenu = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
-    await menuService.deleteMenu(req.tenant!.id, Number(req.params.id));
+    const tenantId = req.tenant!.id;
+    const menuId = Number(req.params.id);
+    reqLogger.info("Deleting menu", { tenantId, menuId });
+    await menuService.deleteMenu(tenantId, menuId);
+    reqLogger.info("Menu deleted", { tenantId, menuId });
     res.status(204).send();
   } catch (e) {
+    reqLogger.error("Failed to delete menu", {
+      tenantId: req.tenant?.id,
+      menuId: Number(req.params.id),
+      error: errorMessage(e),
+    });
     next(e);
   }
 };
@@ -182,13 +218,28 @@ export const getMenuQr = async (req: Request, res: Response, next: NextFunction)
 };
 
 export const importMenuCsv = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
     const userId = req.tenant!.id;
     const menuId = Number(req.params.id);
     const file = req.file as Express.Multer.File | undefined;
+    reqLogger.info("Importing menu CSV", { tenantId: userId, menuId, hasFile: Boolean(file) });
     const summary = await importMenuFromCsv(userId, menuId, file);
+    reqLogger.info("Menu CSV imported", {
+      tenantId: userId,
+      menuId,
+      createdItems: summary?.createdItems,
+      createdCategories: summary?.createdCategories,
+      reusedCategories: summary?.reusedCategories,
+      errors: summary?.errors?.length ?? 0,
+    });
     res.status(201).json(summary);
   } catch (e) {
+    reqLogger.error("Failed to import menu CSV", {
+      tenantId: req.tenant?.id,
+      menuId: Number(req.params.id),
+      error: errorMessage(e),
+    });
     next(e);
   }
 };

@@ -31,7 +31,7 @@ router.delete("/:id", isAuthenticated, requireAdmin, deleteUser);
 router.post("/:id/activate", isAuthenticated, activateUser);
 
 router.post("/forgot-password", validate(forgotPasswordSchema), forgotPassword);
-router.post("/restore-password", isAuthenticated, validate(restorePasswordSchema), restorePassword);
-router.get("/verify-reset-token/:token", isAuthenticated, verifyResetToken);
+router.post("/restore-password", validate(restorePasswordSchema), restorePassword);
+router.get("/verify-reset-token/:token", verifyResetToken);
 
 export default router;

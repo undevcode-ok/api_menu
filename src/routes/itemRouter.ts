@@ -1,4 +1,5 @@
 import { Router as R4 } from "express";
+import { isAuthenticated } from "../middlewares/isAuthenticated";
 import { validate } from "../middlewares/validate";
 import {
   createItemSchema,
@@ -14,13 +15,13 @@ import {
 
 const itemRouter = R4();
 
-itemRouter.get("/", getAllItems);
-itemRouter.get("/:id", getItemById);
+itemRouter.get("/", isAuthenticated, getAllItems);
+itemRouter.get("/:id", isAuthenticated, getItemById);
 
-itemRouter.post("/", validate(createItemSchema), createItem);
+itemRouter.post("/", isAuthenticated, validate(createItemSchema), createItem);
 
-itemRouter.put("/:id", validate(updateItemSchema), updateItem);
+itemRouter.put("/:id", isAuthenticated, validate(updateItemSchema), updateItem);
 
-itemRouter.delete("/:id", deleteItem);
+itemRouter.delete("/:id", isAuthenticated, deleteItem);
 
 export default itemRouter;

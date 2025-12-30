@@ -4,6 +4,7 @@ const seedMenus = async () => {
   await Menu.bulkCreate([
     {
       userId: 1,
+      publicId: "00000000-0000-0000-0000-000000000001",
       title: "Pizzería Don Pepe",
       active: true,
       logo: "https://picsum.photos/seed/donpepe-logo/256/256",
@@ -13,6 +14,7 @@ const seedMenus = async () => {
     },
     {
       userId: 1,
+      publicId: "00000000-0000-0000-0000-000000000002",
       title: "Cafetería La Plaza",
       active: true,
       logo: "https://picsum.photos/seed/laplaza-logo/256/256",

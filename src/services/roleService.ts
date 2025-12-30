@@ -32,7 +32,7 @@ export const updateRole = async (id: number, data: UpdateRoleDto) => {
 };
 
 export const deleteRole = async (id: number) => {
-  const role = await Role.findOne({ where: { id, active: true } });
+  const role = await Role.findOne({ where: { id } });
   if (!role) {
     throw new ApiError("Role not found", 404);
   }

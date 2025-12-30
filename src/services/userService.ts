@@ -218,7 +218,7 @@ export const updateUser = async (id: number, data: UpdateUserDto) => {
 export const deleteUser = async (id: number) => {
   return await sequelize.transaction(async (t) => {
     const user = await User.findOne({
-      where: { id, active: true },
+      where: { id },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });

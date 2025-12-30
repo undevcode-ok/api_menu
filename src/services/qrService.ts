@@ -1,5 +1,6 @@
 import axios from "axios";
 import { ApiError } from "../utils/ApiError";
+import { logger } from "../utils/logger";
 
 const DEFAULT_QR_ENDPOINT = "https://api-qr-yz35.onrender.com/api/qr";
 const QR_API_ENDPOINT = (process.env.QR_API_ENDPOINT ?? DEFAULT_QR_ENDPOINT).trim() || DEFAULT_QR_ENDPOINT;
@@ -19,6 +20,11 @@ export type QrResponse =
 
 export async function requestQr(payload: QrRequestPayload): Promise<QrResponse> {
   try {
+    logger.debug("Requesting QR to provider", {
+      endpoint: QR_API_ENDPOINT,
+      format: payload.format,
+      size: payload.size,
+    });
     const response = await axios.post(QR_API_ENDPOINT, payload, {
       headers: { "Content-Type": "application/json" },
       responseType: "arraybuffer",
@@ -32,12 +38,17 @@ export async function requestQr(payload: QrRequestPayload): Promise<QrResponse> 
       const jsonText = buffer.toString("utf-8");
       try {
         const parsed = JSON.parse(jsonText);
+        logger.debug("QR provider returned JSON payload", { endpoint: QR_API_ENDPOINT });
         return { kind: "json", contentType, payload: parsed };
       } catch (err) {
         throw new ApiError("QR API devolvió una respuesta JSON inválida", 502, undefined, err);
       }
     }
 
+    logger.debug("QR provider returned binary payload", {
+      endpoint: QR_API_ENDPOINT,
+      contentType,
+    });
     return { kind: "binary", contentType, buffer };
   } catch (error: any) {
     if (axios.isAxiosError(error)) {
@@ -47,6 +58,11 @@ export async function requestQr(payload: QrRequestPayload): Promise<QrResponse> 
         endpoint: QR_API_ENDPOINT,
       };
       const clientError = status && status >= 400 && status < 500;
+      logger.error("QR provider request failed", {
+        endpoint: QR_API_ENDPOINT,
+        status,
+        error: error.message,
+      });
       throw new ApiError(
         "No se pudo generar el código QR",
         clientError ? 400 : 502,
@@ -55,6 +71,10 @@ export async function requestQr(payload: QrRequestPayload): Promise<QrResponse> 
       );
     }
 
+    logger.error("Unexpected error requesting QR", {
+      endpoint: QR_API_ENDPOINT,
+      error: error instanceof Error ? error.message : "unknown",
+    });
     throw new ApiError("Error inesperado generando el código QR", 500, undefined, error);
   }
 }

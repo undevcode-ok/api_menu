@@ -12,6 +12,7 @@ export interface MenuColor {
 export interface MenuAttributes {
 id: number;
 userId: number;
+publicId: string;
 title: string;
 active: boolean;
 
@@ -31,6 +32,7 @@ export type MenuCreationAttributes = Optional<MenuAttributes, "id" | "active" | 
 export class Menu extends Model<MenuAttributes, MenuCreationAttributes> implements MenuAttributes {
 public id!: number;
 public userId!: number;
+public publicId!: string;
 public title!: string;
 public active!: boolean;
 public logo!: string | null;
@@ -46,6 +48,7 @@ Menu.init(
 {
 id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
 userId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+publicId: { type: DataTypes.UUID, allowNull: false, defaultValue: DataTypes.UUIDV4, unique: true },
 title: { type: DataTypes.STRING(120), allowNull: false },
 active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 logo: { type: DataTypes.STRING(255), allowNull: true, comment: "URL del logo" },
@@ -53,5 +56,9 @@ backgroundImage: { type: DataTypes.STRING(255), allowNull: true, comment: "URL d
 color: { type: DataTypes.JSON, allowNull: true, comment: "Objeto { primary, secondary } en HEX" },
 pos: { type: DataTypes.STRING(255), allowNull: true, comment: "Nombre o descripción de los puntos de venta" },
 },
-{ sequelize, tableName: "menus", modelName: "Menu", timestamps: true }
+{ sequelize, tableName: "menus", modelName: "Menu", timestamps: true,
+  indexes: [
+    { name: "menus_public_id_unique", unique: true, fields: ["publicId"] },
+  ]
+ }
 );

@@ -7,6 +7,7 @@ import {
   deleteRole,
 } from "../controllers/roleController";
 import { isAuthenticated } from "../middlewares/isAuthenticated";
+import { requireAdmin } from "../middlewares/requireAdmin";
 import { validate } from "../middlewares/validate";
 import {
   createRoleSchema,
@@ -15,11 +16,11 @@ import {
 
 const router = Router();
 
-router.get("/", isAuthenticated, getAllRoles);
-router.get("/:id", isAuthenticated, getRoleById);
+router.get("/", isAuthenticated, requireAdmin, getAllRoles);
+router.get("/:id", isAuthenticated, requireAdmin, getRoleById);
 
-router.post("/", isAuthenticated, validate(createRoleSchema), createRole);
-router.put("/:id", isAuthenticated,validate(updateRoleSchema), updateRole);
-router.delete("/:id", isAuthenticated, deleteRole);
+router.post("/", isAuthenticated, requireAdmin, validate(createRoleSchema), createRole);
+router.put("/:id", isAuthenticated, requireAdmin, validate(updateRoleSchema), updateRole);
+router.delete("/:id", isAuthenticated, requireAdmin, deleteRole);
 
 export default router;

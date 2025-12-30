@@ -321,7 +321,6 @@ export const updateCategory = async (
 
 export const deleteCategory = async (userId: number, id: number) => {
   const category = await findCategoryForUser(userId, id, {
-    activeOnly: true,
     includeItems: true,
   });
   try {

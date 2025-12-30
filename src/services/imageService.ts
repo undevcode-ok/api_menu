@@ -166,16 +166,27 @@ export const getAllImages = async (userId: number) => {
   });
 };
 
-export const getImageById = async (userId: number, id: number) => {
+export const getImageById = async (
+  userId: number,
+  id: number,
+  options: { includeInactive?: boolean } = {}
+) => {
   if (!id) throw new ApiError("ID de imagen inválido", 400);
 
+  const { includeInactive = false } = options;
+  const where: any = { id };
+  if (!includeInactive) where.active = true;
+
+  const menuWhere: any = { userId };
+  if (!includeInactive) menuWhere.active = true;
+
   const it = await ImageM.findOne({
-    where: { id, active: true },
+    where,
     include: [
       {
         model: MenuM,
         as: "menu",
-        where: { userId, active: true },
+        where: menuWhere,
       },
     ],
   });
@@ -230,7 +241,7 @@ export const updateImage = async (
 };
 
 export const deleteImage = async (userId: number, id: number) => {
-  const it = await getImageById(userId, id);
+  const it = await getImageById(userId, id, { includeInactive: true });
   await deleteImageFromS3(it.url);
   await it.update({ active: false });
 };

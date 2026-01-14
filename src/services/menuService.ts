@@ -162,25 +162,28 @@ export const getPublicMenuByPublicId = async (publicId: string) => {
 
   try {
     const menu = await MenuM.findOne({
-      where: { publicId },
+      where: { publicId, active: true },
       attributes: ["id", "publicId", "title", "logo", "backgroundImage", "color", "pos", "active"],
       include: [
         {
           model: Category,
           as: "categories",
           required: false,
+          where: { active: true },
           attributes: ["id", "title", "position", "active"],
           include: [
             {
               model: Item,
               as: "items",
               required: false,
+              where: { active: true },
               attributes: ["id", "title", "description", "price", "position", "active"],
               include: [
                 {
                   model: ItemImage,
                   as: "images",
                   required: false,
+                  where: { active: true },
                   attributes: ["id", "url", "alt", "sortOrder", "active"],
                   separate: true,
                   order: [

@@ -269,6 +269,42 @@ export const importMenuCsv = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+export const transferMenuOwner = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
+  try {
+    const currentOwnerId = req.tenant!.id;
+    const menuId = Number(req.params.id);
+    if (!Number.isFinite(menuId) || menuId <= 0) {
+      throw new ApiError("ID de menú inválido", 400, { id: req.params.id });
+    }
+
+    const { newUserId } = req.body as { newUserId: number };
+
+    reqLogger.info("Transferring menu owner", {
+      tenantId: currentOwnerId,
+      menuId,
+      newUserId,
+    });
+
+    const result = await menuService.transferMenuOwner(currentOwnerId, menuId, newUserId);
+
+    reqLogger.info("Menu owner transferred", {
+      tenantId: currentOwnerId,
+      menuId,
+      newUserId,
+    });
+
+    return res.json(result);
+  } catch (e) {
+    reqLogger.error("Failed to transfer menu owner", {
+      tenantId: req.tenant?.id,
+      menuId: Number(req.params.id),
+      error: errorMessage(e),
+    });
+    next(e);
+  }
+};
+
 export const getPublicMenu = async (req: Request, res: Response, next: NextFunction) => {
   const reqLogger = new RequestLogger(req);
   try {

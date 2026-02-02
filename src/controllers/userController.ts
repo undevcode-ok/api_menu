@@ -38,6 +38,36 @@ export const getAllUsers = async (
   }
 };
 
+export const getActiveUsersExceptMe = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const reqLogger = new RequestLogger(req);
+  try {
+    const myId = Number(req.user?.sub);
+    if (!Number.isFinite(myId) || myId <= 0) {
+      return res.status(401).json({ message: "Invalid token payload" });
+    }
+
+    const pg = buildPagination(req.query, [
+      "id",
+      "name",
+      "lastName",
+      "email",
+      "createdAt",
+    ]);
+
+    reqLogger.info("Listing active users except current", { myId, pagination: pg });
+    const result = await userService.getActiveUsersExcept(myId, pg);
+    reqLogger.info("Active users listed successfully", { myId });
+    res.json(result);
+  } catch (error) {
+    reqLogger.error("Failed to list active users", { error: errorMessage(error) });
+    next(error);
+  }
+};
+
 export const getUserById = async (
   req: Request,
   res: Response,

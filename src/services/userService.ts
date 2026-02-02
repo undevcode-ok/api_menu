@@ -54,6 +54,26 @@ export const getAllUsers = async (
   return buildPaginatedResult(rows, count, pg);
 };
 
+export const getActiveUsersExcept = async (
+  excludeUserId: number,
+  pg: PaginationParams
+): Promise<PaginatedResult<User>> => {
+  const { limit, offset, order } = pg;
+
+  const { rows, count } = await User.findAndCountAll({
+    where: {
+      active: true,
+      id: { [Op.ne]: excludeUserId },
+    },
+    limit,
+    offset,
+    order,
+    distinct: true,
+  });
+
+  return buildPaginatedResult(rows, count, pg);
+};
+
 export const getUserById = async (id: number) => {
   const user = await User.findOne({ where: { id, active: true } });
   if (!user) throw new ApiError("User not found", 404);

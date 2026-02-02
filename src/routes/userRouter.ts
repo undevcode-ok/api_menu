@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getAllUsers,
+  getActiveUsersExceptMe,
   getUserById,
   createUser,
   updateUser,
@@ -23,6 +24,7 @@ import {
 const router = Router();
 
 router.get("/", isAuthenticated, requireAdmin, getAllUsers);
+router.get("/active", isAuthenticated, requireAdmin, getActiveUsersExceptMe);
 router.get("/:id", isAuthenticated, getUserById);
 
 router.post("/", isAuthenticated, requireAdmin, validate(createUserSchema), createUser);

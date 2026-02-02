@@ -1,5 +1,6 @@
 import { Transaction } from "sequelize";
 import { Menu as MenuM, MenuCreationAttributes } from "../models/Menu";
+import User from "../models/User";
 import { CreateMenuDto, UpdateMenuDto } from "../dtos/menu.dto";
 import { ApiError } from "../utils/ApiError";
 import sequelize from "../utils/databaseService";
@@ -348,4 +349,61 @@ export const deleteMenu = async (userId: number, id: number) => {
       err
     );
   }
+};
+
+/* ===========================
+ * ADMIN: TRANSFER OWNER (solo tenant actual)
+ * =========================== */
+
+export const transferMenuOwner = async (
+  currentOwnerId: number,
+  menuId: number,
+  newUserId: number
+) => {
+  if (!currentOwnerId) throw new ApiError("ID de usuario (tenant) inválido", 400);
+  if (!menuId) throw new ApiError("ID de menú inválido", 400);
+  if (!newUserId) throw new ApiError("newUserId inválido", 400);
+
+  if (newUserId === currentOwnerId) {
+    throw new ApiError("El nuevo owner debe ser distinto al actual", 400, {
+      currentOwnerId,
+      newUserId,
+    });
+  }
+
+  return await sequelize.transaction(async (t: Transaction) => {
+    const menu = await MenuM.findOne({
+      where: { id: menuId, userId: currentOwnerId, active: true },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!menu) {
+      throw new ApiError("Menu not found", 404, { menuId });
+    }
+
+    const targetUser = await User.findOne({
+      where: { id: newUserId, active: true },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!targetUser) {
+      throw new ApiError("Target user not found or inactive", 404, { newUserId });
+    }
+
+    if (!targetUser.subdomain) {
+      throw new ApiError("Target user has no subdomain", 400, {
+        newUserId,
+      });
+    }
+
+    await menu.update({ userId: newUserId }, { transaction: t });
+
+    return {
+      id: menu.id,
+      previousUserId: currentOwnerId,
+      newUserId,
+    };
+  });
 };

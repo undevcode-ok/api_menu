@@ -122,3 +122,16 @@ const updateBase = z.object({
 });
 
 export const updateMenuSchema = z.preprocess(normalizeBody, updateBase);
+
+/* ===========================
+ * ADMIN: TRANSFER OWNER
+ * =========================== */
+
+export const transferMenuOwnerSchema = z
+  .object({
+    newUserId: z.coerce
+      .number({ invalid_type_error: "newUserId debe ser numérico" })
+      .int("newUserId debe ser entero")
+      .positive("newUserId debe ser mayor a 0"),
+  })
+  .strict();

@@ -1,7 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your_secret_key";
+import { verifyToken } from "../utils/jwt";
 
 export const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -11,7 +9,7 @@ export const isAuthenticated = (req: Request, res: Response, next: NextFunction)
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = verifyToken(token);
     // @ts-ignore
     req.user = decoded; // así podés acceder a los datos del usuario en los endpoints
     next();

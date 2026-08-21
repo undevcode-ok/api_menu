@@ -109,3 +109,15 @@ El servidor corre en: [http://localhost:3000](http://localhost:3000)
   ```
 - Cada fila `category` crea una nueva categoría si el título aún no existe en el menú (si ya existe, se reutiliza). Todas las filas `item` siguientes se asignan a la última categoría definida.
 - Si alguna fila viene incompleta, el endpoint continúa con las demás y devuelve el detalle de errores por fila en la respuesta.
+
+---
+
+## Plan Free
+
+- Registro público: `POST /api/auth/register-free`.
+- Sesión/capacidades actuales: `GET /api/auth/me`.
+- Un menú activo por cuenta.
+- Diez ítems como máximo por menú, incluyendo importaciones CSV.
+- No permite cargar ni vincular imágenes.
+
+El contrato completo para frontend está documentado en `FREE_PLAN_API.md`.

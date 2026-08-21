@@ -5,6 +5,7 @@ import {
   ValidationError,
   ForeignKeyConstraintError,
 } from "sequelize";
+import multer from "multer";
 
 export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error("❌ Error atrapado:", err);
@@ -35,7 +36,29 @@ export const errorHandler = (err: any, _req: Request, res: Response, _next: Next
   }
 
   /* ============================
-   * 3) Sequelize: Valor muy largo
+   * 3) Errores de archivos
+   * ============================ */
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({
+      message: "Archivo inválido",
+      details: {
+        code: err.code,
+        field: err.field,
+      },
+    });
+  }
+
+  if (
+    typeof err?.message === "string" &&
+    (err.message.startsWith("Tipo de archivo no permitido") ||
+      err.message.startsWith("Extensión de archivo no permitida") ||
+      err.message.startsWith("Formato inválido"))
+  ) {
+    return res.status(400).json({ message: err.message });
+  }
+
+  /* ============================
+   * 4) Sequelize: Valor muy largo
    * ============================ */
   if (err?.original?.code === "ER_DATA_TOO_LONG") {
     const col =

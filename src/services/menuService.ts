@@ -8,6 +8,11 @@ import { ImageS3Service } from "../s3-image-module";
 import { Category } from "../models/Category";
 import { Item } from "../models/Item";
 import ItemImage from "../models/ItemImage";
+import {
+  assertCanActivateMenu,
+  assertCanCreateMenu,
+  assertCanMutateImages,
+} from "./accountPolicyService";
 
 const DEFAULT_MENU_LOGO_URL = (process.env.DEFAULT_MENU_LOGO_URL ?? "").trim() || null;
 
@@ -233,12 +238,18 @@ export const createMenu = async (
 
   try {
     return await sequelize.transaction(async (t: Transaction) => {
+      const hasImageMutation = Boolean(
+        files?.length || data.logo || data.backgroundImage
+      );
+      const accountPlan = await assertCanCreateMenu(userId, t);
+      await assertCanMutateImages(userId, hasImageMutation, t);
+
       // Crear menú base
       const menu = await MenuM.create(
         {
           ...(data as MenuCreationAttributes),
           userId,
-          active: data.active ?? true,
+          active: accountPlan === "free" ? true : data.active ?? true,
         },
         { transaction: t }
       );
@@ -289,6 +300,14 @@ export const updateMenu = async (
 
   try {
     return await sequelize.transaction(async (t: Transaction) => {
+      const hasImageMutation = Boolean(
+        files?.length || data.logo || data.backgroundImage
+      );
+      await assertCanMutateImages(userId, hasImageMutation, t);
+      if (data.active === true) {
+        await assertCanActivateMenu(userId, id, t);
+      }
+
       const menu = await MenuM.findOne({ where: { id, userId }, transaction: t });
       if (!menu) {
         throw new ApiError("Menu not found", 404, { userId, id });

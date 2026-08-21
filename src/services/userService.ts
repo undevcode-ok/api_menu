@@ -1,7 +1,7 @@
 import { User, UserCreationAttributes } from "../models/User";
 import { Menu } from "../models/Menu";
 import { PasswordResetToken } from "../models/PasswordResetToken";
-import { CreateUserDto, UpdateUserDto } from "../dtos/user.dto";
+import { CreateUserDto, RegisterFreeUserDto, UpdateUserDto } from "../dtos/user.dto";
 import { ApiError } from "../utils/ApiError";
 import { Op, UniqueConstraintError, ValidationError } from "sequelize";
 import argon2 from "argon2";
@@ -15,6 +15,7 @@ import sequelize from "../utils/databaseService";
 import { passwordReset } from "./passwordResetService";
 import { emailService } from "./emailService";
 import { generateUserSubdomain } from "../utils/subdomain";
+import { getOrCreateFreeRole } from "./accountPolicyService";
 
 const RESET_TTL_MIN = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES ?? "1440", 10);
 const FRONTEND_INVITE_URL = (process.env.FRONTEND_INVITE_URL ?? "https://frontend.local/create").trim();
@@ -140,6 +141,61 @@ export const createGoogleUser = async (userData: {
     }
     if (error instanceof ValidationError) {
       throw new ApiError(error.errors.map((e) => e.message).join(", "), 400);
+    }
+    throw error;
+  }
+};
+
+/* ================================
+   REGISTRO PÚBLICO PLAN FREE
+================================ */
+
+export const registerFreeUser = async (data: RegisterFreeUserDto) => {
+  const normalizedEmail = data.email.trim().toLowerCase();
+
+  try {
+    const existing = await User.unscoped().findOne({
+      where: { email: normalizedEmail },
+    });
+    if (existing) {
+      throw new ApiError("Email already in use", 409, {
+        code: "EMAIL_ALREADY_IN_USE",
+      });
+    }
+
+    const subdomain = await generateUserSubdomain(data.name, data.lastName);
+    const initialHash = await argon2.hash(data.password.trim());
+
+    return await sequelize.transaction(async (transaction) => {
+      const freeRole = await getOrCreateFreeRole(transaction);
+
+      return User.create(
+        {
+          name: data.name,
+          lastName: data.lastName,
+          email: normalizedEmail,
+          cel: data.cel ?? null,
+          roleId: freeRole.id,
+          password: data.password,
+          passwordHash: initialHash,
+          active: true,
+          subdomain,
+        } as UserCreationAttributes,
+        { transaction }
+      );
+    });
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    if (
+      error instanceof UniqueConstraintError ||
+      error?.name === "SequelizeUniqueConstraintError"
+    ) {
+      throw new ApiError("Email or subdomain already in use", 409, {
+        code: "REGISTRATION_CONFLICT",
+      });
+    }
+    if (error instanceof ValidationError) {
+      throw new ApiError(error.errors.map((entry) => entry.message).join(", "), 400);
     }
     throw error;
   }

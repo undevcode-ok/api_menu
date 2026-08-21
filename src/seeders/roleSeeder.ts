@@ -4,7 +4,8 @@ const seedRole = async () => {
   await Role.bulkCreate([
     { role: "Admin", active: true },
     { role: "Client", active: true },
-    { role: "User", active: true }
+    { role: "User", active: true },
+    { role: "Free", active: true }
   ]);
 };
 

@@ -1,11 +1,15 @@
-import jwt, { JwtPayload, Secret } from "jsonwebtoken";
+import { JwtPayload } from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
-
-const JWT_SECRET: Secret = process.env.JWT_SECRET ?? "super_secret_key";
+import { verifyToken } from "../utils/jwt";
 
 declare module "express-serve-static-core" {
   interface Request {
-    user?: JwtPayload & { sub?: string; roleId?: number; email?: string };
+    user?: JwtPayload & {
+      sub?: string;
+      roleId?: number;
+      email?: string;
+      accountType?: "free" | "standard";
+    };
   }
 }
 
@@ -17,7 +21,7 @@ export const isAuthenticated = (req: Request, res: Response, next: NextFunction)
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = verifyToken(token) as JwtPayload;
     req.user = decoded;
     next();
   } catch {

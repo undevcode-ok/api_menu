@@ -1,6 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 
-const ADMIN_ROLE_ID = Number(process.env.ADMIN_ROLE_ID ?? "1");
+export const ADMIN_ROLE_ID = Number(process.env.ADMIN_ROLE_ID ?? "1");
+
+export const isAdminRequest = (req: Request) =>
+  req.user?.roleId === ADMIN_ROLE_ID;
 
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   const roleId = req.user?.roleId;
@@ -8,7 +11,7 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
     return res.status(403).json({ message: "User role not found" });
   }
 
-  if (roleId !== ADMIN_ROLE_ID) {
+  if (!isAdminRequest(req)) {
     return res.status(403).json({ message: "Admin role required" });
   }
 

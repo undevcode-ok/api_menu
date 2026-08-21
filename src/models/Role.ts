@@ -32,6 +32,7 @@ Role.init(
     role: {
       type: DataTypes.STRING,
       allowNull: false,
+      unique: true,
     },
     active: {
       type: DataTypes.BOOLEAN,

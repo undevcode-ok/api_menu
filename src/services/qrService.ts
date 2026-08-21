@@ -31,7 +31,9 @@ export async function requestQr(payload: QrRequestPayload): Promise<QrResponse> 
       timeout: QR_API_TIMEOUT_MS,
     });
 
-    const contentType = (response.headers["content-type"] || "application/octet-stream").toLowerCase();
+    const contentType = String(
+      response.headers["content-type"] || "application/octet-stream"
+    ).toLowerCase();
     const buffer = Buffer.from(response.data);
 
     if (contentType.includes("application/json")) {

@@ -12,6 +12,7 @@ import {
 } from "../controllers/userController";
 import { isAuthenticated } from "../middlewares/isAuthenticated";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import { requireAdminForRoleChange, requireSelfOrAdmin } from "../middlewares/authorization";
 import { validate } from "../middlewares/validate";
 import {
   createUserSchema,
@@ -23,12 +24,19 @@ import {
 const router = Router();
 
 router.get("/", isAuthenticated, requireAdmin, getAllUsers);
-router.get("/:id", isAuthenticated, getUserById);
+router.get("/:id", isAuthenticated, requireSelfOrAdmin, getUserById);
 
 router.post("/", isAuthenticated, requireAdmin, validate(createUserSchema), createUser);
-router.put("/:id", isAuthenticated, validate(updateUserSchema), updateUser);
+router.put(
+  "/:id",
+  isAuthenticated,
+  requireSelfOrAdmin,
+  validate(updateUserSchema),
+  requireAdminForRoleChange,
+  updateUser
+);
 router.delete("/:id", isAuthenticated, requireAdmin, deleteUser);
-router.post("/:id/activate", isAuthenticated, activateUser);
+router.post("/:id/activate", isAuthenticated, requireAdmin, activateUser);
 
 router.post("/forgot-password", validate(forgotPasswordSchema), forgotPassword);
 router.post("/restore-password", validate(restorePasswordSchema), restorePassword);

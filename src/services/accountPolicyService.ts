@@ -45,9 +45,24 @@ export async function getAccountEntitlements(
   userId: number,
   transaction?: Transaction
 ): Promise<AccountEntitlements> {
+  const authorization = await getAccountAuthorization(userId, transaction);
+  return authorization.account;
+}
+
+export async function getAccountAuthorization(
+  userId: number,
+  transaction?: Transaction
+) {
   const user = await findUserForPolicy(userId, transaction);
-  const plan = await planForRoleId(user.roleId, transaction);
-  return entitlementsForPlan(plan);
+  const role = await Role.findByPk(user.roleId, { transaction });
+  if (!role || !role.active) {
+    throw new ApiError("Rol de usuario no encontrado o inactivo", 403);
+  }
+
+  return {
+    role: role.role,
+    account: entitlementsForPlan(planFromRoleName(role.role)),
+  };
 }
 
 export async function getOrCreateFreeRole(transaction?: Transaction) {

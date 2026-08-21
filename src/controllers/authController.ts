@@ -2,13 +2,17 @@ import { Request, Response, NextFunction } from "express";
 import * as userService from "../services/userService";
 import { RequestLogger } from "../utils/requestLogger";
 import { generateToken } from "../utils/jwt";
-import { getAccountEntitlements } from "../services/accountPolicyService";
+import {
+  getAccountAuthorization,
+  getAccountEntitlements,
+} from "../services/accountPolicyService";
 import { User } from "../models/User";
 
 type AuthTokenPayload = {
   sub: string; // JWT spec: string
   email: string;
   roleId: number;
+  role: string;
   name: string;
   lastName: string;
   subdomain: string | null;
@@ -19,11 +23,13 @@ const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "unknown";
 
 async function buildAuthResult(user: User) {
-  const account = await getAccountEntitlements(user.id);
+  const authorization = await getAccountAuthorization(user.id);
+  const account = authorization.account;
   const payload: AuthTokenPayload = {
     sub: String(user.id),
     email: user.email,
     roleId: user.roleId,
+    role: authorization.role,
     name: user.name,
     lastName: user.lastName,
     subdomain: user.subdomain ?? null,

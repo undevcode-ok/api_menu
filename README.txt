@@ -121,3 +121,13 @@ El servidor corre en: [http://localhost:3000](http://localhost:3000)
 - No permite cargar ni vincular imágenes.
 
 El contrato completo para frontend está documentado en `FREE_PLAN_API.md`.
+
+### Pruebas del plan Free
+
+```bash
+npm test
+npm run test:e2e
+```
+
+La prueba E2E usa HTTP real y MySQL. Por seguridad se niega a ejecutarse salvo
+que `DB_NAME=api_menu_e2e`; recrea únicamente las tablas de esa base.

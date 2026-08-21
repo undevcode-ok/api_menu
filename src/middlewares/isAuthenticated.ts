@@ -7,6 +7,7 @@ declare module "express-serve-static-core" {
     user?: JwtPayload & {
       sub?: string;
       roleId?: number;
+      role?: string;
       email?: string;
       accountType?: "free" | "standard";
     };

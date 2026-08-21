@@ -13,7 +13,6 @@ import {
   requireAdminForRoleChange,
   requireSelfOrAdmin,
 } from "../middlewares/authorization";
-import { ADMIN_ROLE_ID } from "../middlewares/requireAdmin";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
 const tests: TestCase[] = [];
@@ -137,7 +136,7 @@ test("un usuario común no puede acceder al ID de otro usuario", () => {
   requireSelfOrAdmin(
     {
       params: { id: "9" },
-      user: { sub: "7", roleId: ADMIN_ROLE_ID + 1000 },
+      user: { sub: "7", roleId: 1, role: "Free" },
     } as any,
     response as any,
     () => {
@@ -155,8 +154,8 @@ test("un usuario Free no puede quitarse el rol Free", () => {
   let nextCalled = false;
   requireAdminForRoleChange(
     {
-      body: { roleId: ADMIN_ROLE_ID },
-      user: { sub: "7", roleId: ADMIN_ROLE_ID + 1000 },
+      body: { roleId: 999 },
+      user: { sub: "7", roleId: 1, role: "Free" },
     } as any,
     response as any,
     () => {
@@ -175,7 +174,7 @@ test("un usuario puede actualizar su perfil si no cambia el rol", () => {
   requireSelfOrAdmin(
     {
       params: { id: "7" },
-      user: { sub: "7", roleId: ADMIN_ROLE_ID + 1000 },
+      user: { sub: "7", roleId: 1, role: "Free" },
     } as any,
     response as any,
     () => {

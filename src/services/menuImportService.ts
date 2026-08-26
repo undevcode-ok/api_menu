@@ -5,7 +5,10 @@ import { Category as CategoryM } from "../models/Category";
 import { Item as ItemM } from "../models/Item";
 import { Transaction } from "sequelize";
 import sequelize from "../utils/databaseService";
-import { assertCanCreateItems } from "./accountPolicyService";
+import {
+  assertCanCreateCategories,
+  assertCanCreateItems,
+} from "./accountPolicyService";
 
 type CsvType = "category" | "item";
 
@@ -182,6 +185,26 @@ function countCreatableItemRows(rows: ParsedRow[]) {
   return count;
 }
 
+function countNewCategoryRows(
+  rows: ParsedRow[],
+  existingCategories: CategoryM[]
+) {
+  const knownKeys = new Set(
+    existingCategories.map((category) => normalizeKey(category.title))
+  );
+  let count = 0;
+
+  for (const row of rows) {
+    if (row.type !== "category" || !row.categoryTitle) continue;
+    const key = normalizeKey(row.categoryTitle);
+    if (knownKeys.has(key)) continue;
+    knownKeys.add(key);
+    count += 1;
+  }
+
+  return count;
+}
+
 export async function importMenuFromCsv(
   userId: number,
   menuId: number,
@@ -195,12 +218,6 @@ export async function importMenuFromCsv(
   }
 
   return sequelize.transaction(async (transaction) => {
-  await assertCanCreateItems(
-    userId,
-    menuId,
-    countCreatableItemRows(rows),
-    transaction
-  );
   await ensureMenuForUser(userId, menuId, transaction);
 
   const summary: MenuImportSummary = {
@@ -214,6 +231,18 @@ export async function importMenuFromCsv(
     where: { menuId },
     transaction,
   });
+  await assertCanCreateCategories(
+    userId,
+    menuId,
+    countNewCategoryRows(rows, existingCategories),
+    transaction
+  );
+  await assertCanCreateItems(
+    userId,
+    menuId,
+    countCreatableItemRows(rows),
+    transaction
+  );
   const existingByKey = new Map<string, CategoryM>();
   existingCategories.forEach((cat) => {
     existingByKey.set(normalizeKey(cat.title), cat);

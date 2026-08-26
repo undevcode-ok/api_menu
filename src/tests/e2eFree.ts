@@ -126,6 +126,7 @@ async function main() {
     assert.equal(registration.body.account.plan, "free");
     assert.deepEqual(registration.body.account.limits, {
       menus: 1,
+      categoriesPerMenu: 3,
       itemsPerMenu: 10,
       images: false,
     });
@@ -192,7 +193,51 @@ async function main() {
     });
     assert.equal(category.status, 201);
     const categoryId = category.body.id as number;
-    ok("categoría creada");
+    ok("primera categoría creada");
+
+    for (const title of ["Categoría 2", "Categoría 3"]) {
+      const extraCategory = await request("POST", "/api/categories", {
+        token,
+        tenant: user.subdomain,
+        body: { menuId: firstMenuId, title, active: true },
+      });
+      assert.equal(extraCategory.status, 201);
+    }
+    ok("Free puede crear hasta 3 categorías");
+
+    const fourthCategory = await request("POST", "/api/categories", {
+      token,
+      tenant: user.subdomain,
+      body: { menuId: firstMenuId, title: "Categoría 4", active: true },
+    });
+    assert.equal(fourthCategory.status, 403);
+    assert.equal(
+      fourthCategory.body.details.code,
+      "FREE_PLAN_CATEGORY_LIMIT"
+    );
+    ok("cuarta categoría Free rechazada");
+
+    const categoryCsv = [
+      "type,categoryTitle,itemTitle",
+      "category,Categoría desde CSV,",
+    ].join("\n");
+    const categoryCsvForm = new FormData();
+    categoryCsvForm.append(
+      "file",
+      new Blob([categoryCsv], { type: "text/csv" }),
+      "categories.csv"
+    );
+    const categoryCsvImport = await request(
+      "POST",
+      `/api/menus/${firstMenuId}/import-csv`,
+      { token, tenant: user.subdomain, body: categoryCsvForm }
+    );
+    assert.equal(categoryCsvImport.status, 403);
+    assert.equal(
+      categoryCsvImport.body.details.code,
+      "FREE_PLAN_CATEGORY_LIMIT"
+    );
+    ok("límite de categorías también se aplica al CSV");
 
     let firstItemId = 0;
     for (let index = 1; index <= 10; index += 1) {
@@ -224,7 +269,7 @@ async function main() {
 
     const csv = [
       "type,categoryTitle,itemTitle,itemDescription,itemPrice,itemActive",
-      "category,Bebidas,,,,",
+      "category,Categoría E2E,,,,",
       "item,,Agua,Agua mineral,1000,true",
     ].join("\n");
     const csvForm = new FormData();
@@ -307,6 +352,189 @@ async function main() {
     assert.equal(roleEscalation.body.details.code, "ROLE_CHANGE_DENIED");
     ok("escalación propia de rol rechazada");
 
+    await sequelize.query(
+      `INSERT INTO roles (role, active, createdAt, updatedAt)
+       VALUES ('Client', 1, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE active = 1, updatedAt = NOW()`
+    );
+    await sequelize.query(
+      `UPDATE users
+       SET roleId = (SELECT id FROM roles WHERE role = 'Client' LIMIT 1),
+           updatedAt = NOW()
+       WHERE id = :userId`,
+      { replacements: { userId: secondRegistration.body.user.id } }
+    );
+
+    const standardLogin = await request("POST", "/api/auth/login", {
+      body: {
+        email: secondRegistration.body.user.email,
+        password: registrationBody.password,
+      },
+    });
+    assert.equal(standardLogin.status, 200);
+    assert.deepEqual(standardLogin.body.account.limits, {
+      menus: 3,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    });
+    const standardToken = standardLogin.body.token as string;
+    const standardTenant = secondRegistration.body.user.subdomain as string;
+    ok("rol Client informa límite de 3 menús");
+
+    const standardMenuIds: number[] = [];
+    for (let index = 1; index <= 3; index += 1) {
+      const standardMenu = await request("POST", "/api/menus", {
+        token: standardToken,
+        tenant: standardTenant,
+        body: { title: `Menú estándar ${index}` },
+      });
+      assert.equal(standardMenu.status, 201);
+      standardMenuIds.push(standardMenu.body.id as number);
+    }
+    ok("Client puede crear 3 menús activos");
+
+    const fourthStandardMenu = await request("POST", "/api/menus", {
+      token: standardToken,
+      tenant: standardTenant,
+      body: { title: "Menú estándar 4" },
+    });
+    assert.equal(fourthStandardMenu.status, 403);
+    assert.equal(
+      fourthStandardMenu.body.details.code,
+      "STANDARD_PLAN_MENU_LIMIT"
+    );
+    ok("cuarto menú Client rechazado");
+
+    const deletedStandardMenu = await request(
+      "DELETE",
+      `/api/menus/${standardMenuIds[0]}`,
+      { token: standardToken, tenant: standardTenant }
+    );
+    assert.equal(deletedStandardMenu.status, 204);
+
+    const standardReplacement = await request("POST", "/api/menus", {
+      token: standardToken,
+      tenant: standardTenant,
+      body: { title: "Menú estándar reemplazo" },
+    });
+    assert.equal(standardReplacement.status, 201);
+    ok("Client puede reemplazar un menú desactivado");
+
+    const standardReactivation = await request(
+      "PUT",
+      `/api/menus/${standardMenuIds[0]}`,
+      {
+        token: standardToken,
+        tenant: standardTenant,
+        body: { active: true },
+      }
+    );
+    assert.equal(standardReactivation.status, 403);
+    assert.equal(
+      standardReactivation.body.details.code,
+      "STANDARD_PLAN_MENU_LIMIT"
+    );
+    ok("Client no puede reactivar un cuarto menú");
+
+    const adminRegistration = await request(
+      "POST",
+      "/api/auth/register-free",
+      {
+        body: {
+          ...registrationBody,
+          email: `admin-e2e-${suffix}@example.com`,
+          name: "Admin",
+        },
+      }
+    );
+    assert.equal(adminRegistration.status, 201);
+    await sequelize.query(
+      `INSERT INTO roles (role, active, createdAt, updatedAt)
+       VALUES ('Admin', 1, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE active = 1, updatedAt = NOW()`
+    );
+    await sequelize.query(
+      `UPDATE users
+       SET roleId = (SELECT id FROM roles WHERE role = 'Admin' LIMIT 1),
+           updatedAt = NOW()
+       WHERE id = :userId`,
+      { replacements: { userId: adminRegistration.body.user.id } }
+    );
+
+    const adminLogin = await request("POST", "/api/auth/login", {
+      body: {
+        email: adminRegistration.body.user.email,
+        password: registrationBody.password,
+      },
+    });
+    assert.equal(adminLogin.status, 200);
+    assert.deepEqual(adminLogin.body.account.limits, {
+      menus: null,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    });
+
+    for (let index = 1; index <= 4; index += 1) {
+      const adminMenu = await request("POST", "/api/menus", {
+        token: adminLogin.body.token,
+        tenant: adminRegistration.body.user.subdomain,
+        body: { title: `Menú Admin ${index}` },
+      });
+      assert.equal(adminMenu.status, 201);
+    }
+    ok("Admin conserva límites ilimitados y puede crear más de 3 menús");
+
+    const userRoleRegistration = await request(
+      "POST",
+      "/api/auth/register-free",
+      {
+        body: {
+          ...registrationBody,
+          email: `user-role-e2e-${suffix}@example.com`,
+          name: "UserRole",
+        },
+      }
+    );
+    assert.equal(userRoleRegistration.status, 201);
+    await sequelize.query(
+      `INSERT INTO roles (role, active, createdAt, updatedAt)
+       VALUES ('User', 1, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE active = 1, updatedAt = NOW()`
+    );
+    await sequelize.query(
+      `UPDATE users
+       SET roleId = (SELECT id FROM roles WHERE role = 'User' LIMIT 1),
+           updatedAt = NOW()
+       WHERE id = :userId`,
+      { replacements: { userId: userRoleRegistration.body.user.id } }
+    );
+
+    const userRoleLogin = await request("POST", "/api/auth/login", {
+      body: {
+        email: userRoleRegistration.body.user.email,
+        password: registrationBody.password,
+      },
+    });
+    assert.equal(userRoleLogin.status, 200);
+    assert.deepEqual(userRoleLogin.body.account.limits, {
+      menus: null,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    });
+
+    for (let index = 1; index <= 4; index += 1) {
+      const userRoleMenu = await request("POST", "/api/menus", {
+        token: userRoleLogin.body.token,
+        tenant: userRoleRegistration.body.user.subdomain,
+        body: { title: `Menú User ${index}` },
+      });
+      assert.equal(userRoleMenu.status, 201);
+    }
+    ok("User conserva límites ilimitados y puede crear más de 3 menús");
+
     const deletedMenu = await request("DELETE", `/api/menus/${firstMenuId}`, {
       token,
       tenant: user.subdomain,
@@ -337,7 +565,7 @@ async function main() {
     );
     ok("no se pueden reactivar dos menús simultáneamente");
 
-    console.log("\nE2E Free aprobado: 17 escenarios HTTP + MySQL");
+    console.log("\nE2E de planes aprobado: HTTP real + MySQL");
   } finally {
     await closeServer(server);
     await sequelize.close();

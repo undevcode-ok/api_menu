@@ -6,12 +6,13 @@ import { Role } from "../models/Role";
 import { User } from "../models/User";
 import {
   AccountEntitlements,
-  AccountPlan,
   FREE_ROLE_NAME,
+  assertCategoryCreationWithinPlan,
   assertImageMutationWithinPlan,
   assertItemCreationWithinPlan,
   assertMenuCreationWithinPlan,
-  entitlementsForPlan,
+  entitlementsForRoleName,
+  isClientRoleName,
   planFromRoleName,
 } from "../policies/accountPolicy";
 import { ApiError } from "../utils/ApiError";
@@ -33,12 +34,15 @@ async function findUserForPolicy(
   return user;
 }
 
-async function planForRoleId(
+async function roleForPolicy(
   roleId: number,
   transaction?: Transaction
-): Promise<AccountPlan> {
+): Promise<Role> {
   const role = await Role.findByPk(roleId, { transaction });
-  return planFromRoleName(role?.role);
+  if (!role || !role.active) {
+    throw new ApiError("Rol de usuario no encontrado o inactivo", 403);
+  }
+  return role;
 }
 
 export async function getAccountEntitlements(
@@ -54,14 +58,11 @@ export async function getAccountAuthorization(
   transaction?: Transaction
 ) {
   const user = await findUserForPolicy(userId, transaction);
-  const role = await Role.findByPk(user.roleId, { transaction });
-  if (!role || !role.active) {
-    throw new ApiError("Rol de usuario no encontrado o inactivo", 403);
-  }
+  const role = await roleForPolicy(user.roleId, transaction);
 
   return {
     role: role.role,
-    account: entitlementsForPlan(planFromRoleName(role.role)),
+    account: entitlementsForRoleName(role.role),
   };
 }
 
@@ -84,8 +85,9 @@ export async function assertCanCreateMenu(
   transaction: Transaction
 ) {
   const user = await findUserForPolicy(userId, transaction, true);
-  const plan = await planForRoleId(user.roleId, transaction);
-  if (plan !== "free") return plan;
+  const role = await roleForPolicy(user.roleId, transaction);
+  const plan = planFromRoleName(role.role);
+  if (plan !== "free" && !isClientRoleName(role.role)) return plan;
 
   const existingMenus = await Menu.count({
     where: { userId, active: true },
@@ -101,8 +103,9 @@ export async function assertCanActivateMenu(
   transaction: Transaction
 ) {
   const user = await findUserForPolicy(userId, transaction, true);
-  const plan = await planForRoleId(user.roleId, transaction);
-  if (plan !== "free") return;
+  const role = await roleForPolicy(user.roleId, transaction);
+  const plan = planFromRoleName(role.role);
+  if (plan !== "free" && !isClientRoleName(role.role)) return;
 
   const otherActiveMenus = await Menu.count({
     where: {
@@ -115,6 +118,30 @@ export async function assertCanActivateMenu(
   assertMenuCreationWithinPlan(plan, otherActiveMenus);
 }
 
+export async function assertCanCreateCategories(
+  userId: number,
+  menuId: number,
+  requestedCategories: number,
+  transaction: Transaction
+) {
+  if (requestedCategories <= 0) return;
+
+  const user = await findUserForPolicy(userId, transaction, true);
+  const role = await roleForPolicy(user.roleId, transaction);
+  const plan = planFromRoleName(role.role);
+  if (plan !== "free") return;
+
+  const existingCategories = await Category.count({
+    where: { menuId },
+    transaction,
+  });
+  assertCategoryCreationWithinPlan(
+    plan,
+    existingCategories,
+    requestedCategories
+  );
+}
+
 export async function assertCanCreateItems(
   userId: number,
   menuId: number,
@@ -122,7 +149,8 @@ export async function assertCanCreateItems(
   transaction: Transaction
 ) {
   const user = await findUserForPolicy(userId, transaction, true);
-  const plan = await planForRoleId(user.roleId, transaction);
+  const role = await roleForPolicy(user.roleId, transaction);
+  const plan = planFromRoleName(role.role);
   if (plan !== "free") return;
 
   const categories = await Category.findAll({
@@ -148,6 +176,7 @@ export async function assertCanMutateImages(
 ) {
   if (!hasImageMutation) return;
   const user = await findUserForPolicy(userId, transaction);
-  const plan = await planForRoleId(user.roleId, transaction);
+  const role = await roleForPolicy(user.roleId, transaction);
+  const plan = planFromRoleName(role.role);
   assertImageMutationWithinPlan(plan, hasImageMutation);
 }

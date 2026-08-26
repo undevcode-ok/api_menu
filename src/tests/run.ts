@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { registerFreeSchema } from "../validations/auth.validation";
 import {
+  assertCategoryCreationWithinPlan,
   assertImageMutationWithinPlan,
   assertItemCreationWithinPlan,
   assertMenuCreationWithinPlan,
   entitlementsForPlan,
+  entitlementsForRoleName,
+  isAdminRoleName,
+  isClientRoleName,
   planFromRoleName,
 } from "../policies/accountPolicy";
 import { ApiError } from "../utils/ApiError";
@@ -90,13 +94,30 @@ test("el rol Free se reconoce sin depender de mayúsculas", () => {
   assert.equal(planFromRoleName("Client"), "standard");
 });
 
-test("Free puede crear el primer menú pero no un segundo", () => {
+test("Free permite 1 menú y estándar permite 3", () => {
   assert.doesNotThrow(() => assertMenuCreationWithinPlan("free", 0));
   expectPolicyError(
     () => assertMenuCreationWithinPlan("free", 1),
     "FREE_PLAN_MENU_LIMIT"
   );
-  assert.doesNotThrow(() => assertMenuCreationWithinPlan("standard", 99));
+  assert.doesNotThrow(() => assertMenuCreationWithinPlan("standard", 2));
+  expectPolicyError(
+    () => assertMenuCreationWithinPlan("standard", 3),
+    "STANDARD_PLAN_MENU_LIMIT"
+  );
+});
+
+test("Free puede crear hasta 3 categorías por menú", () => {
+  assert.doesNotThrow(() =>
+    assertCategoryCreationWithinPlan("free", 2, 1)
+  );
+  expectPolicyError(
+    () => assertCategoryCreationWithinPlan("free", 3, 1),
+    "FREE_PLAN_CATEGORY_LIMIT"
+  );
+  assert.doesNotThrow(() =>
+    assertCategoryCreationWithinPlan("standard", 100, 50)
+  );
 });
 
 test("Free puede llegar a 10 ítems pero no superar el límite", () => {
@@ -126,7 +147,62 @@ test("Free no puede crear o reemplazar imágenes", () => {
 test("las capacidades Free son estables para el frontend", () => {
   assert.deepEqual(entitlementsForPlan("free"), {
     plan: "free",
-    limits: { menus: 1, itemsPerMenu: 10, images: false },
+    limits: {
+      menus: 1,
+      categoriesPerMenu: 3,
+      itemsPerMenu: 10,
+      images: false,
+    },
+  });
+});
+
+test("las capacidades estándar informan el límite de 3 menús", () => {
+  assert.deepEqual(entitlementsForPlan("standard"), {
+    plan: "standard",
+    limits: {
+      menus: 3,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    },
+  });
+});
+
+test("solo el rol Client recibe el límite estándar de 3 menús", () => {
+  assert.equal(isClientRoleName(" CLIENT "), true);
+  assert.deepEqual(entitlementsForRoleName("Client"), {
+    plan: "standard",
+    limits: {
+      menus: 3,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    },
+  });
+});
+
+test("Admin conserva capacidades sin límites", () => {
+  assert.equal(isAdminRoleName(" ADMIN "), true);
+  assert.deepEqual(entitlementsForRoleName("Admin"), {
+    plan: "standard",
+    limits: {
+      menus: null,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    },
+  });
+});
+
+test("User conserva capacidades sin límites", () => {
+  assert.deepEqual(entitlementsForRoleName("User"), {
+    plan: "standard",
+    limits: {
+      menus: null,
+      categoriesPerMenu: null,
+      itemsPerMenu: null,
+      images: true,
+    },
   });
 });
 

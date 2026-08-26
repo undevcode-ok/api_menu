@@ -42,6 +42,7 @@ Respuesta `201`:
     "plan": "free",
     "limits": {
       "menus": 1,
+      "categoriesPerMenu": 3,
       "itemsPerMenu": 10,
       "images": false
     }
@@ -70,6 +71,7 @@ actualizados del usuario y sus capacidades:
     "plan": "free",
     "limits": {
       "menus": 1,
+      "categoriesPerMenu": 3,
       "itemsPerMenu": 10,
       "images": false
     }
@@ -86,14 +88,47 @@ fuente de verdad.
 - Si `account.limits.images === false`, ocultar selectores de archivos, campos
   de URL de imagen, logo y fondo.
 - Si la cantidad de menús activos llegó a `account.limits.menus`, deshabilitar
-  “Crear menú”. Si elimina o desactiva ese menú puede crear otro, pero nunca
-  puede tener dos activos a la vez.
+  “Crear menú”. Si elimina o desactiva un menú puede crear otro, sin superar
+  simultáneamente el límite informado (1 para Free y 3 para Client).
+- Si la cantidad de categorías del menú llegó a
+  `account.limits.categoriesPerMenu`, deshabilitar “Agregar categoría” y
+  advertir antes de importar un CSV que cree categorías nuevas. En Free el
+  límite es 3; en estándar es `null`.
 - Contar todos los ítems de todas las categorías del menú. Al llegar a
   `account.limits.itemsPerMenu`, deshabilitar “Agregar ítem” y advertir antes de
   importar un CSV que exceda el espacio restante.
 - Un límite con valor `null` significa ilimitado.
 - No decidir permisos leyendo `roleId`. Usar exclusivamente `account.plan` y
   `account.limits` para la presentación.
+
+Para una cuenta paga con rol `Client` (rol 2 en producción),
+`account.limits` es:
+
+```json
+{
+  "menus": 3,
+  "categoriesPerMenu": null,
+  "itemsPerMenu": null,
+  "images": true
+}
+```
+
+Para una cuenta con rol `Admin`, todos los límites son ilimitados. Se mantiene
+`plan: "standard"` por compatibilidad y el frontend debe guiarse por `limits`:
+
+```json
+{
+  "menus": null,
+  "categoriesPerMenu": null,
+  "itemsPerMenu": null,
+  "images": true
+}
+```
+
+El rol `User` tampoco recibe el límite comercial de menús. Su respuesta de
+límites es igual a la de Admin. El límite de 3 menús se aplica exclusivamente
+al rol cuyo nombre es `Client`; el frontend no debe inferirlo por un `roleId`
+fijo y siempre debe usar `account.limits.menus`.
 
 ## Errores de límites
 
@@ -102,8 +137,10 @@ Los límites devuelven HTTP `403`. Leer `error.response.data.details.code`:
 | Código | Significado |
 | --- | --- |
 | `FREE_PLAN_MENU_LIMIT` | Ya existe el único menú permitido. |
+| `FREE_PLAN_CATEGORY_LIMIT` | La operación superaría 3 categorías en el menú. |
 | `FREE_PLAN_ITEM_LIMIT` | La operación superaría 10 ítems en el menú. |
 | `FREE_PLAN_IMAGES_DISABLED` | Se intentó crear, vincular o reemplazar una imagen. |
+| `STANDARD_PLAN_MENU_LIMIT` | La operación superaría 3 menús activos. |
 | `TENANT_ACCESS_DENIED` | El subdominio no pertenece al usuario autenticado. |
 | `ROLE_CHANGE_DENIED` | Un usuario no administrador intentó cambiar su rol. |
 

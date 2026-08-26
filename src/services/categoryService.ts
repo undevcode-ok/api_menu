@@ -12,6 +12,7 @@ import { URL } from "url";
 import { ImageS3Service } from "../s3-image-module";
 import { CreateCategoryDto, UpdateCategoryDto } from "../dtos/category.dto";
 import { ApiError } from "../utils/ApiError";
+import { assertCanCreateCategories } from "./accountPolicyService";
 
 /* ===========================
  * Helpers de tenant
@@ -21,13 +22,18 @@ import { ApiError } from "../utils/ApiError";
  * Verifica que el menú pertenezca al usuario (tenant).
  * Tira 403 si el menú no existe o no es del usuario.
  */
-async function assertMenuBelongsToUser(menuId: number, userId: number) {
+async function assertMenuBelongsToUser(
+  menuId: number,
+  userId: number,
+  transaction?: Transaction
+) {
   const menu = await MenuM.findOne({
     where: {
       id: menuId,
       userId,
       active: true,
     },
+    transaction,
   });
 
   if (!menu) {
@@ -270,11 +276,10 @@ export const createCategory = async (userId: number, data: CreateCategoryDto) =>
     throw new ApiError("Datos incompletos para crear categoría", 400);
   }
 
-  // 🛡 aseguramos que el menú sea del usuario actual
-  await assertMenuBelongsToUser(data.menuId, userId);
-
   try {
     const created = await sequelize.transaction(async (t) => {
+      await assertMenuBelongsToUser(data.menuId, userId, t);
+      await assertCanCreateCategories(userId, data.menuId, 1, t);
       const position = await nextPositionForMenu(data.menuId, t);
       return CategoryM.create(
         { ...(data as CategoryCreationAttributes), position },
@@ -283,6 +288,7 @@ export const createCategory = async (userId: number, data: CreateCategoryDto) =>
     });
     return formatCategoryResponse(created);
   } catch (e: any) {
+    if (e instanceof ApiError) throw e;
     throw new ApiError("Error al crear categoría", 500, undefined, e);
   }
 };

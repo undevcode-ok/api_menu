@@ -300,17 +300,21 @@ export const updateMenu = async (
 
   try {
     return await sequelize.transaction(async (t: Transaction) => {
+      const menu = await MenuM.findOne({
+        where: { id, userId },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!menu) {
+        throw new ApiError("Menu not found", 404, { userId, id });
+      }
+
       const hasImageMutation = Boolean(
         files?.length || data.logo || data.backgroundImage
       );
       await assertCanMutateImages(userId, hasImageMutation, t);
-      if (data.active === true) {
+      if (data.active === true && !menu.active) {
         await assertCanActivateMenu(userId, id, t);
-      }
-
-      const menu = await MenuM.findOne({ where: { id, userId }, transaction: t });
-      if (!menu) {
-        throw new ApiError("Menu not found", 404, { userId, id });
       }
 
       const patch: any = {};

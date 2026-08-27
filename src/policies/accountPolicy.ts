@@ -18,7 +18,7 @@ export const CLIENT_ROLE_NAME = "Client";
 export const FREE_MENU_LIMIT = 1;
 export const STANDARD_MENU_LIMIT = 3;
 export const FREE_CATEGORIES_PER_MENU_LIMIT = 3;
-export const FREE_ITEMS_PER_MENU_LIMIT = 10;
+export const FREE_ITEMS_PER_MENU_LIMIT = 20;
 
 export function planFromRoleName(roleName?: string | null): AccountPlan {
   return roleName?.trim().toLowerCase() === FREE_ROLE_NAME.toLowerCase()

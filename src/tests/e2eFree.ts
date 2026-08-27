@@ -127,7 +127,7 @@ async function main() {
     assert.deepEqual(registration.body.account.limits, {
       menus: 1,
       categoriesPerMenu: 3,
-      itemsPerMenu: 10,
+      itemsPerMenu: 20,
       images: false,
     });
     assert.ok(registration.body.token);
@@ -160,7 +160,7 @@ async function main() {
     const me = await request("GET", "/api/auth/me", { token });
     assert.equal(me.status, 200);
     assert.equal(me.body.user.id, user.id);
-    assert.equal(me.body.account.limits.itemsPerMenu, 10);
+    assert.equal(me.body.account.limits.itemsPerMenu, 20);
     ok("GET /api/auth/me restaura la sesión");
 
     const firstMenu = await request("POST", "/api/menus", {
@@ -240,7 +240,7 @@ async function main() {
     ok("límite de categorías también se aplica al CSV");
 
     let firstItemId = 0;
-    for (let index = 1; index <= 10; index += 1) {
+    for (let index = 1; index <= 20; index += 1) {
       const item = await request("POST", "/api/items", {
         token,
         tenant: user.subdomain,
@@ -255,17 +255,17 @@ async function main() {
       assert.equal(item.status, 201, `falló la creación del ítem ${index}`);
       if (index === 1) firstItemId = item.body.id as number;
     }
-    ok("10 ítems creados correctamente");
+    ok("20 ítems creados correctamente");
 
-    const eleventhItem = await request("POST", "/api/items", {
+    const twentyFirstItem = await request("POST", "/api/items", {
       token,
       tenant: user.subdomain,
-      body: { categoryId, title: "Ítem 11", price: 1100 },
+      body: { categoryId, title: "Ítem 21", price: 2100 },
     });
-    assert.equal(eleventhItem.status, 403);
-    assert.equal(eleventhItem.body.details.code, "FREE_PLAN_ITEM_LIMIT");
-    assert.equal(eleventhItem.body.details.current, 10);
-    ok("ítem 11 rechazado");
+    assert.equal(twentyFirstItem.status, 403);
+    assert.equal(twentyFirstItem.body.details.code, "FREE_PLAN_ITEM_LIMIT");
+    assert.equal(twentyFirstItem.body.details.current, 20);
+    ok("ítem 21 rechazado");
 
     const csv = [
       "type,categoryTitle,itemTitle,itemDescription,itemPrice,itemActive",

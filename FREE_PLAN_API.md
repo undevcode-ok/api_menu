@@ -43,7 +43,7 @@ Respuesta `201`:
     "limits": {
       "menus": 1,
       "categoriesPerMenu": 3,
-      "itemsPerMenu": 10,
+      "itemsPerMenu": 20,
       "images": false
     }
   }
@@ -72,7 +72,7 @@ actualizados del usuario y sus capacidades:
     "limits": {
       "menus": 1,
       "categoriesPerMenu": 3,
-      "itemsPerMenu": 10,
+      "itemsPerMenu": 20,
       "images": false
     }
   }
@@ -138,7 +138,7 @@ Los límites devuelven HTTP `403`. Leer `error.response.data.details.code`:
 | --- | --- |
 | `FREE_PLAN_MENU_LIMIT` | Ya existe el único menú permitido. |
 | `FREE_PLAN_CATEGORY_LIMIT` | La operación superaría 3 categorías en el menú. |
-| `FREE_PLAN_ITEM_LIMIT` | La operación superaría 10 ítems en el menú. |
+| `FREE_PLAN_ITEM_LIMIT` | La operación superaría 20 ítems en el menú. |
 | `FREE_PLAN_IMAGES_DISABLED` | Se intentó crear, vincular o reemplazar una imagen. |
 | `STANDARD_PLAN_MENU_LIMIT` | La operación superaría 3 menús activos. |
 | `TENANT_ACCESS_DENIED` | El subdominio no pertenece al usuario autenticado. |
@@ -148,13 +148,13 @@ Ejemplo:
 
 ```json
 {
-  "message": "El plan Free permite hasta 10 ítems por menú.",
+  "message": "El plan Free permite hasta 20 ítems por menú.",
   "statusCode": 403,
   "details": {
     "code": "FREE_PLAN_ITEM_LIMIT",
     "plan": "free",
-    "limit": 10,
-    "current": 10,
+    "limit": 20,
+    "current": 20,
     "requested": 1
   }
 }

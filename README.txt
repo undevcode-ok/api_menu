@@ -118,7 +118,7 @@ El servidor corre en: [http://localhost:3000](http://localhost:3000)
 - Sesión/capacidades actuales: `GET /api/auth/me`.
 - Un menú activo por cuenta.
 - Tres categorías como máximo por menú, incluyendo importaciones CSV.
-- Diez ítems como máximo por menú, incluyendo importaciones CSV.
+- Veinte ítems como máximo por menú, incluyendo importaciones CSV.
 - No permite cargar ni vincular imágenes.
 
 El rol Client (rol 2 en producción) permite hasta tres menús activos; las

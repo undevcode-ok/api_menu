@@ -120,14 +120,14 @@ test("Free puede crear hasta 3 categorías por menú", () => {
   );
 });
 
-test("Free puede llegar a 10 ítems pero no superar el límite", () => {
-  assert.doesNotThrow(() => assertItemCreationWithinPlan("free", 9, 1));
+test("Free puede llegar a 20 ítems pero no superar el límite", () => {
+  assert.doesNotThrow(() => assertItemCreationWithinPlan("free", 19, 1));
   expectPolicyError(
-    () => assertItemCreationWithinPlan("free", 10, 1),
+    () => assertItemCreationWithinPlan("free", 20, 1),
     "FREE_PLAN_ITEM_LIMIT"
   );
   expectPolicyError(
-    () => assertItemCreationWithinPlan("free", 8, 3),
+    () => assertItemCreationWithinPlan("free", 18, 3),
     "FREE_PLAN_ITEM_LIMIT"
   );
   assert.doesNotThrow(() =>
@@ -150,7 +150,7 @@ test("las capacidades Free son estables para el frontend", () => {
     limits: {
       menus: 1,
       categoriesPerMenu: 3,
-      itemsPerMenu: 10,
+      itemsPerMenu: 20,
       images: false,
     },
   });

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import User from "../models/User";
+import { isAdminRequest } from "./requireAdmin";
 
 declare global {
   namespace Express {
@@ -34,6 +35,17 @@ export const tenantMiddleware = async (req: Request, res: Response, next: NextFu
 
     if (!user) {
       return res.status(404).json({ error: "User not found or inactive" });
+    }
+
+    const authenticatedUserId = Number(req.user?.sub);
+    if (
+      !Number.isInteger(authenticatedUserId) ||
+      (!isAdminRequest(req) && authenticatedUserId !== user.id)
+    ) {
+      return res.status(403).json({
+        error: "No tenés permiso para operar sobre este tenant",
+        details: { code: "TENANT_ACCESS_DENIED" },
+      });
     }
     
     req.tenant = {

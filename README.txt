@@ -109,3 +109,31 @@ El servidor corre en: [http://localhost:3000](http://localhost:3000)
   ```
 - Cada fila `category` crea una nueva categoría si el título aún no existe en el menú (si ya existe, se reutiliza). Todas las filas `item` siguientes se asignan a la última categoría definida.
 - Si alguna fila viene incompleta, el endpoint continúa con las demás y devuelve el detalle de errores por fila en la respuesta.
+
+---
+
+## Plan Free
+
+- Registro público: `POST /api/auth/register-free`.
+- Sesión/capacidades actuales: `GET /api/auth/me`.
+- Un menú activo por cuenta.
+- Tres categorías como máximo por menú, incluyendo importaciones CSV.
+- Diez ítems como máximo por menú, incluyendo importaciones CSV.
+- No permite cargar ni vincular imágenes.
+
+El rol Client (rol 2 en producción) permite hasta tres menús activos; las
+categorías y los ítems siguen sin límite y las imágenes continúan habilitadas.
+Los roles Admin y User no tienen límites de menús, categorías, ítems ni
+imágenes.
+
+El contrato completo para frontend está documentado en `FREE_PLAN_API.md`.
+
+### Pruebas del plan Free
+
+```bash
+npm test
+npm run test:e2e
+```
+
+La prueba E2E usa HTTP real y MySQL. Por seguridad se niega a ejecutarse salvo
+que `DB_NAME=api_menu_e2e`; recrea únicamente las tablas de esa base.

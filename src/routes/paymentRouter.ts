@@ -9,13 +9,14 @@ import {
 import { validate } from "../middlewares/validate";
 import { createPaymentSchema, updatePaymentSchema } from "../validations/payment.validation";
 import { isAuthenticated } from "../middlewares/isAuthenticated";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router = Router();
 
-router.get("/",  isAuthenticated,  getAllPayments);
-router.get("/:id",  isAuthenticated, getPaymentById);
-router.post("/", isAuthenticated, validate(createPaymentSchema), createPayment);
-router.put("/:id",  isAuthenticated,  validate(updatePaymentSchema), updatePayment);
-router.delete("/:id",  isAuthenticated,  deletePayment);
+router.get("/", isAuthenticated, requireAdmin, getAllPayments);
+router.get("/:id", isAuthenticated, requireAdmin, getPaymentById);
+router.post("/", isAuthenticated, requireAdmin, validate(createPaymentSchema), createPayment);
+router.put("/:id", isAuthenticated, requireAdmin, validate(updatePaymentSchema), updatePayment);
+router.delete("/:id", isAuthenticated, requireAdmin, deletePayment);
 
 export default router;

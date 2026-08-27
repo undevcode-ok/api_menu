@@ -14,6 +14,7 @@ import { ImageS3Service } from "../s3-image-module";
 
 import { CreateItemDto, UpdateItemDto } from "../dtos/item.dto";
 import { ApiError } from "../utils/ApiError";
+import { assertCanCreateItems } from "./accountPolicyService";
 
 /* ===========================
  * Helper genérico de TX
@@ -30,7 +31,11 @@ async function withTx<T>(fn: (t: Transaction) => Promise<T>) {
  * Verifica que la categoría pertenezca a un menú del usuario (tenant).
  * Si no es así, tira 403.
  */
-async function assertCategoryBelongsToUser(categoryId: number, userId: number) {
+async function assertCategoryBelongsToUser(
+  categoryId: number,
+  userId: number,
+  transaction?: Transaction
+) {
   const category = await CategoryM.findOne({
     where: { id: categoryId, active: true },
     include: [
@@ -40,11 +45,14 @@ async function assertCategoryBelongsToUser(categoryId: number, userId: number) {
         where: { userId, active: true },
       },
     ],
+    transaction,
   });
 
   if (!category) {
     throw new ApiError("No tenés permiso para usar esta categoría", 403);
   }
+
+  return category;
 }
 
 const POSITION_GAP = 10000;
@@ -269,11 +277,12 @@ export const createItem = async (userId: number, data: CreateItemDto) => {
     throw new ApiError("Datos incompletos para crear ítem", 400);
   }
 
-  // 🛡 chequeamos que la categoría cuelgue de un menú del usuario actual
-  await assertCategoryBelongsToUser(data.categoryId, userId);
+  const category = await assertCategoryBelongsToUser(data.categoryId, userId);
 
   try {
     return await withTx(async (t) => {
+      await assertCanCreateItems(userId, category.menuId, 1, t);
+      await assertCategoryBelongsToUser(data.categoryId, userId, t);
       const position = await nextPositionForCategory(data.categoryId, t);
       const created = await ItemM.create(
         { ...(data as ItemCreationAttributes), position },
@@ -282,6 +291,7 @@ export const createItem = async (userId: number, data: CreateItemDto) => {
       return formatItemResponse(created);
     });
   } catch (e: any) {
+    if (e instanceof ApiError) throw e;
     throw new ApiError("Error al crear ítem", 500, undefined, e);
   }
 };

@@ -62,6 +62,9 @@ export const uploadMiddleware = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_FILE_SIZE,
+    files: 10,
+    fields: 50,
+    parts: 60,
   },
   fileFilter,
 });

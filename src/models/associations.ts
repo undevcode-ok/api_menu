@@ -7,7 +7,11 @@ import { Image as ImageA } from "./Image";
 import { Item as ItemA } from "./Item";
 import ItemImage from "./ItemImage";
 
+let associationsConfigured = false;
+
 export const setupAssociations = () => {
+  if (associationsConfigured) return;
+  associationsConfigured = true;
 
     // User - Role
   Role.hasMany(User, { foreignKey: "roleId", as: "users" });

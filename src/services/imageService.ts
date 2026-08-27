@@ -9,6 +9,7 @@ import { Category as CategoryM } from "../models/Category";
 import sequelize from "../utils/databaseService";
 import { ImageS3Service } from "../s3-image-module";
 import { CreateImageDto, UpdateImageDto } from "../dtos/image.dto";
+import { assertCanMutateImages } from "./accountPolicyService";
 
 /* ============================================================
    Helpers base
@@ -201,6 +202,7 @@ export const createImage = async (userId: number, data: CreateImageDto) => {
     throw new ApiError("Datos incompletos para crear imagen", 400);
   }
 
+  await assertCanMutateImages(userId, true);
   await assertMenuBelongsToUser(data.menuId, userId);
 
   return await ImageM.create(data as ImageCreationAttributes);
@@ -213,6 +215,8 @@ export const updateImage = async (
 ) => {
   if (!userId) throw new ApiError("ID de usuario (tenant) inválido", 400);
   if (!id) throw new ApiError("ID de imagen inválido", 400);
+
+  await assertCanMutateImages(userId, typeof data.url === "string");
 
   try {
     // 👇 NO filtramos por active
@@ -322,6 +326,13 @@ export const upsertItemImages = async (
   images: any[],
   files?: Express.Multer.File[]
 ) => {
+  const hasImageMutation = images.some(
+    (image) =>
+      image?._delete !== true &&
+      (!image?.id || Boolean(image?.url) || Boolean(image?.fileField))
+  );
+  await assertCanMutateImages(userId, hasImageMutation);
+
   // 🛡 El ítem tiene que ser del usuario actual
   await assertItemBelongsToUser(itemId, userId);
 

@@ -142,6 +142,31 @@ export const deleteMenu = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+export const getMenuQrUrl = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
+  try {
+    const userId = req.tenant!.id;
+    const menuId = Number(req.params.id);
+
+    const menu = await menuService.getMenuBasicInfo(userId, menuId);
+    const targetUrl = buildMenuPublicUrl(req, menu.publicId);
+
+    reqLogger.info("Resolved QR target URL", {
+      tenantId: userId,
+      menuId,
+      menuPublicId: menu.publicId,
+    });
+
+    return res.json({ targetUrl });
+  } catch (e) {
+    reqLogger.error("Failed to resolve QR target URL", {
+      menuId: Number(req.params.id),
+      error: e instanceof Error ? e.message : "unknown",
+    });
+    next(e);
+  }
+};
+
 export const getMenuQr = async (req: Request, res: Response, next: NextFunction) => {
   const reqLogger = new RequestLogger(req);
   try {

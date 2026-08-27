@@ -3,6 +3,12 @@ import { ApiError } from "../utils/ApiError";
 import { Menu as MenuM } from "../models/Menu";
 import { Category as CategoryM } from "../models/Category";
 import { Item as ItemM } from "../models/Item";
+import { Transaction } from "sequelize";
+import sequelize from "../utils/databaseService";
+import {
+  assertCanCreateCategories,
+  assertCanCreateItems,
+} from "./accountPolicyService";
 
 type CsvType = "category" | "item";
 
@@ -119,17 +125,28 @@ function normalizeKey(value: string) {
   return value.trim().toLowerCase();
 }
 
-async function ensureMenuForUser(userId: number, menuId: number) {
-  const menu = await MenuM.findOne({ where: { id: menuId, userId, active: true } });
+async function ensureMenuForUser(
+  userId: number,
+  menuId: number,
+  transaction?: Transaction
+) {
+  const menu = await MenuM.findOne({
+    where: { id: menuId, userId, active: true },
+    transaction,
+  });
   if (!menu) {
     throw new ApiError("Menú no encontrado o sin permisos.", 404, { menuId });
   }
   return menu;
 }
 
-async function resolveNextCategoryPosition(menuId: number, cache: Map<number, number>) {
+async function resolveNextCategoryPosition(
+  menuId: number,
+  cache: Map<number, number>,
+  transaction?: Transaction
+) {
   if (!cache.has(menuId)) {
-    const max = await CategoryM.max("position", { where: { menuId } });
+    const max = await CategoryM.max("position", { where: { menuId }, transaction });
     const start = Number.isFinite(max as number) ? (max as number) + POSITION_GAP : POSITION_GAP;
     cache.set(menuId, start);
   } else {
@@ -138,9 +155,13 @@ async function resolveNextCategoryPosition(menuId: number, cache: Map<number, nu
   return cache.get(menuId)!;
 }
 
-async function resolveNextItemPosition(categoryId: number, cache: Map<number, number>) {
+async function resolveNextItemPosition(
+  categoryId: number,
+  cache: Map<number, number>,
+  transaction?: Transaction
+) {
   if (!cache.has(categoryId)) {
-    const max = await ItemM.max("position", { where: { categoryId } });
+    const max = await ItemM.max("position", { where: { categoryId }, transaction });
     const start = Number.isFinite(max as number) ? (max as number) + POSITION_GAP : POSITION_GAP;
     cache.set(categoryId, start);
   } else {
@@ -149,18 +170,55 @@ async function resolveNextItemPosition(categoryId: number, cache: Map<number, nu
   return cache.get(categoryId)!;
 }
 
+function countCreatableItemRows(rows: ParsedRow[]) {
+  let hasCategory = false;
+  let count = 0;
+
+  for (const row of rows) {
+    if (row.type === "category") {
+      hasCategory = Boolean(row.categoryTitle);
+      continue;
+    }
+    if (hasCategory && row.itemTitle) count += 1;
+  }
+
+  return count;
+}
+
+function countNewCategoryRows(
+  rows: ParsedRow[],
+  existingCategories: CategoryM[]
+) {
+  const knownKeys = new Set(
+    existingCategories.map((category) => normalizeKey(category.title))
+  );
+  let count = 0;
+
+  for (const row of rows) {
+    if (row.type !== "category" || !row.categoryTitle) continue;
+    const key = normalizeKey(row.categoryTitle);
+    if (knownKeys.has(key)) continue;
+    knownKeys.add(key);
+    count += 1;
+  }
+
+  return count;
+}
+
 export async function importMenuFromCsv(
   userId: number,
   menuId: number,
   file?: Express.Multer.File
 ): Promise<MenuImportSummary> {
   ensureCsvFile(file);
-  await ensureMenuForUser(userId, menuId);
 
   const rows = parseCsv(file!);
   if (!rows.length) {
     throw new ApiError("El CSV está vacío.", 400);
   }
+
+  return sequelize.transaction(async (transaction) => {
+  await ensureMenuForUser(userId, menuId, transaction);
 
   const summary: MenuImportSummary = {
     createdCategories: 0,
@@ -169,7 +227,22 @@ export async function importMenuFromCsv(
     errors: [],
   };
 
-  const existingCategories = await CategoryM.findAll({ where: { menuId } });
+  const existingCategories = await CategoryM.findAll({
+    where: { menuId },
+    transaction,
+  });
+  await assertCanCreateCategories(
+    userId,
+    menuId,
+    countNewCategoryRows(rows, existingCategories),
+    transaction
+  );
+  await assertCanCreateItems(
+    userId,
+    menuId,
+    countCreatableItemRows(rows),
+    transaction
+  );
   const existingByKey = new Map<string, CategoryM>();
   existingCategories.forEach((cat) => {
     existingByKey.set(normalizeKey(cat.title), cat);
@@ -210,14 +283,17 @@ export async function importMenuFromCsv(
       const position =
         typeof row.categoryPosition === "number"
           ? Math.max(0, Math.floor(row.categoryPosition))
-          : await resolveNextCategoryPosition(menuId, categoryPositionCache);
+          : await resolveNextCategoryPosition(menuId, categoryPositionCache, transaction);
 
-      const category = await CategoryM.create({
-        menuId,
-        title: row.categoryTitle,
-        active: row.categoryActive ?? true,
-        position,
-      });
+      const category = await CategoryM.create(
+        {
+          menuId,
+          title: row.categoryTitle,
+          active: row.categoryActive ?? true,
+          position,
+        },
+        { transaction }
+      );
 
       createdCategories.set(key, category);
       lastCategory = category;
@@ -244,19 +320,23 @@ export async function importMenuFromCsv(
     const position =
       typeof row.itemPosition === "number"
         ? Math.max(0, Math.floor(row.itemPosition))
-        : await resolveNextItemPosition(lastCategory.id, itemPositionCache);
+        : await resolveNextItemPosition(lastCategory.id, itemPositionCache, transaction);
 
-    await ItemM.create({
-      categoryId: lastCategory.id,
-      title: row.itemTitle,
-      description: row.itemDescription ?? null,
-      price: row.itemPrice ?? null,
-      active: row.itemActive ?? true,
-      position,
-    } as any);
+    await ItemM.create(
+      {
+        categoryId: lastCategory.id,
+        title: row.itemTitle,
+        description: row.itemDescription ?? null,
+        price: row.itemPrice ?? null,
+        active: row.itemActive ?? true,
+        position,
+      } as any,
+      { transaction }
+    );
 
     summary.createdItems += 1;
   }
 
   return summary;
+  });
 }

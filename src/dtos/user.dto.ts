@@ -14,3 +14,12 @@ export interface UpdateUserDto {
   roleId?: number;
   password?: string;       // <- opcional para cambiar clave
 }
+
+export interface RegisterFreeUserDto {
+  name: string;
+  lastName: string;
+  email: string;
+  cel?: string | null;
+  password: string;
+  confirmationPassword: string;
+}

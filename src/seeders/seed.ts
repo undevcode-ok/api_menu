@@ -6,11 +6,13 @@ import seedMenus from "./menuSeeder";
 import seedCategories from "./categorySeeder";
 import seedImages from "./imageSeeder";
 import seedItems from "./itemSeeder";
+import { setupAssociations } from "../models/associations";
 
 const seed = async () => {
   let exitCode = 0;
 
   try {
+    setupAssociations();
     console.log("🔄 Desactivando FOREIGN_KEY_CHECKS y sincronizando esquemas...");
 
     // Desactivar validación de claves foráneas para poder dropear en cualquier orden

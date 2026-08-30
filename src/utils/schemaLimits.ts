@@ -1,4 +1,5 @@
 import sequelize from "../utils/databaseService";
+import { logger } from "./logger";
 
 type LimitsMap = Record<string, Record<string, number>>;
 // Estructura: { tableName: { columnName: maxLen, ... }, ... }
@@ -12,6 +13,7 @@ function parseLengthFromType(dbType: string): number | undefined {
 
 export async function loadSchemaLimits(tables: string[]) {
   const qi = sequelize.getQueryInterface();
+  let loadedColumns = 0;
   for (const table of tables) {
     const desc = await qi.describeTable(table); // { col: { type: 'varchar(255)', ... } }
     const perColumn: Record<string, number> = {};
@@ -20,10 +22,15 @@ export async function loadSchemaLimits(tables: string[]) {
       const len = parseLengthFromType(rawType || "");
       if (typeof len === "number") {
         perColumn[col] = len;
+        loadedColumns += 1;
       }
     }
     limitsByTable[table] = perColumn;
   }
+  logger.info("Database schema limits loaded", {
+    tables,
+    loadedColumns,
+  });
 }
 
 export function getMaxLen(table: string, column: string): number | undefined {

@@ -3,7 +3,7 @@ import * as imageService from "../services/imageService";
 import { RequestLogger } from "../utils/requestLogger";
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 export const getAllImages = async (req: Request, res: Response, next: NextFunction) => {
   const reqLogger = new RequestLogger(req);

@@ -77,6 +77,7 @@ async function main() {
     } = {}
   ) {
     const headers = new Headers();
+    headers.set("Origin", "https://frontend.example");
     if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
     if (options.tenant) headers.set("x-tenant-subdomain", options.tenant);
 
@@ -103,7 +104,12 @@ async function main() {
       }
     }
 
-    return { status: response.status, body: payload };
+    return {
+      status: response.status,
+      body: payload,
+      requestId: response.headers.get("x-request-id"),
+      exposedHeaders: response.headers.get("access-control-expose-headers"),
+    };
   }
 
   const ok = (name: string) => console.log(`✓ ${name}`);
@@ -123,6 +129,8 @@ async function main() {
       body: registrationBody,
     });
     assert.equal(registration.status, 201);
+    assert.ok(registration.requestId);
+    assert.match(registration.exposedHeaders ?? "", /x-request-id/i);
     assert.equal(registration.body.account.plan, "free");
     assert.deepEqual(registration.body.account.limits, {
       menus: 1,

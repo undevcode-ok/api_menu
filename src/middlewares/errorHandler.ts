@@ -6,9 +6,36 @@ import {
   ForeignKeyConstraintError,
 } from "sequelize";
 import multer from "multer";
+import { logger } from "../utils/logger";
+import {
+  getErrorCode,
+  getHttpStatusForError,
+} from "../utils/errorClassification";
 
-export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("❌ Error atrapado:", err);
+export const errorHandler = (err: any, req: Request, res: Response, _next: NextFunction) => {
+  const statusCode = getHttpStatusForError(err);
+  const meta = {
+    requestId: req.requestId,
+    method: req.method,
+    route: req.logRoute ??
+      (req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path),
+    statusCode,
+    userId: req.user?.sub,
+    role: req.user?.role,
+    tenantId: req.tenant?.id,
+    errorName: err?.name ?? "UnknownError",
+    errorMessage: err?.message ?? "Unknown error",
+    errorCode: getErrorCode(err),
+    ...(statusCode >= 500 ? { error: err, cause: err?.cause } : {}),
+  };
+
+  if (!req.failureLogged) {
+    if (statusCode >= 500) {
+      logger.error("Request failed", meta);
+    } else {
+      logger.warn("Request rejected", meta);
+    }
+  }
 
   /* ============================
    * 1) ApiError personalizado

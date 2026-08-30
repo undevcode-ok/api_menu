@@ -1,4 +1,5 @@
 import axios from "axios";
+import { logger } from "../utils/logger";
 
 const MAIL_ENDPOINT = "https://mail.flexitaim.com/api/mail/send";
 const FROM_NAME = "Flexitaim Notifier";
@@ -103,20 +104,51 @@ class EmailService {
   }
 
   private async sendMail(payload: MailPayload) {
-    await axios.post(
-      MAIL_ENDPOINT,
-      {
-        to: payload.to,
+    const startedAt = Date.now();
+    const recipientDomain = payload.to.includes("@")
+      ? payload.to.split("@").pop()
+      : "invalid";
+
+    logger.debug("Email delivery started", {
+      recipientDomain,
+      subject: payload.subject,
+    });
+
+    try {
+      const response = await axios.post(
+        MAIL_ENDPOINT,
+        {
+          to: payload.to,
+          subject: payload.subject,
+          html: payload.html,
+          fromName: FROM_NAME,
+          fromEmail: FROM_EMAIL,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 10_000,
+        }
+      );
+
+      logger.info("Email delivered", {
+        recipientDomain,
         subject: payload.subject,
-        html: payload.html,
-        fromName: FROM_NAME,
-        fromEmail: FROM_EMAIL,
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-        timeout: 10_000,
-      }
-    );
+        providerStatus: response.status,
+        durationMs: Date.now() - startedAt,
+      });
+    } catch (error) {
+      logger.error("Email delivery failed", {
+        recipientDomain,
+        subject: payload.subject,
+        providerStatus: axios.isAxiosError(error)
+          ? error.response?.status
+          : undefined,
+        errorCode: axios.isAxiosError(error) ? error.code : undefined,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
+      throw error;
+    }
   }
 }
 

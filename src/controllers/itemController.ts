@@ -3,7 +3,7 @@ import * as itemService from "../services/itemService";
 import { RequestLogger } from "../utils/requestLogger";
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 export const getAllItems = async (req: RI, res: SI, next: NI) => {
   const reqLogger = new RequestLogger(req);

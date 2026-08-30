@@ -11,7 +11,7 @@ const parseId = (req: Request) => {
 };
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 export const getAllUsers = async (
   req: Request,

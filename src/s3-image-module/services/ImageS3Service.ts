@@ -4,6 +4,15 @@ import { convertToWebP, isValidImage } from '../utils/imageProcessor';
 import { UploadImageResult, ImageProcessOptions, UploadedFile } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import { logger } from '../../utils/logger';
+
+function sourceHost(imageUrl: string) {
+  try {
+    return new URL(imageUrl).host;
+  } catch {
+    return "invalid-url";
+  }
+}
 
 /**
  * Servicio para gestionar imágenes en AWS S3
@@ -25,9 +34,16 @@ export class ImageS3Service {
     folder: string = '',
     options: ImageProcessOptions = {}
   ): Promise<UploadImageResult> {
+    const startedAt = Date.now();
     // Validar que sea una imagen
     const isValid = await isValidImage(file.buffer);
     if (!isValid) {
+      logger.warn('Image upload rejected before S3', {
+        reason: 'invalid_image_content',
+        folder,
+        inputBytes: file.buffer.length,
+        mimeType: file.mimetype,
+      });
       throw new Error('El archivo proporcionado no es una imagen válida');
     }
 
@@ -47,10 +63,30 @@ export class ImageS3Service {
       ACL: 'public-read', // Hacer la imagen pública
     });
 
-    await this.s3Client.send(command);
+    try {
+      await this.s3Client.send(command);
+    } catch (error) {
+      logger.error('S3 image upload failed', {
+        folder,
+        key,
+        inputBytes: file.buffer.length,
+        outputBytes: webpBuffer.length,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
+      throw error;
+    }
 
     // Construir URL pública
     const url = `https://${this.bucketName}.s3.amazonaws.com/${key}`;
+
+    logger.info('S3 image uploaded', {
+      folder,
+      key,
+      inputBytes: file.buffer.length,
+      outputBytes: webpBuffer.length,
+      durationMs: Date.now() - startedAt,
+    });
 
     return {
       key,
@@ -74,6 +110,8 @@ export class ImageS3Service {
     folder: string = '',
     options: ImageProcessOptions = {}
   ): Promise<UploadImageResult> {
+    const startedAt = Date.now();
+    const host = sourceHost(imageUrl);
     try {
       // Descargar la imagen
       const response = await axios.get(imageUrl, {
@@ -110,6 +148,15 @@ export class ImageS3Service {
       // Construir URL pública
       const url = `https://${this.bucketName}.s3.amazonaws.com/${key}`;
 
+      logger.info('Remote image downloaded and uploaded to S3', {
+        sourceHost: host,
+        folder,
+        key,
+        downloadedBytes: buffer.length,
+        outputBytes: webpBuffer.length,
+        durationMs: Date.now() - startedAt,
+      });
+
       // Intentar obtener el nombre del archivo de la URL
       const originalName = imageUrl.split('/').pop() || 'downloaded-image';
 
@@ -121,6 +168,15 @@ export class ImageS3Service {
         mimeType: 'image/webp',
       };
     } catch (error) {
+      logger.error('Remote image upload failed', {
+        sourceHost: host,
+        folder,
+        providerStatus: axios.isAxiosError(error)
+          ? error.response?.status
+          : undefined,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
       if (axios.isAxiosError(error)) {
         throw new Error(`Error al descargar la imagen: ${error.message}`);
       }
@@ -135,6 +191,7 @@ export class ImageS3Service {
    * @returns true si se eliminó correctamente
    */
   static async deleteImage(key: string): Promise<boolean> {
+    const startedAt = Date.now();
     try {
       const command = new DeleteObjectCommand({
         Bucket: this.bucketName,
@@ -142,9 +199,17 @@ export class ImageS3Service {
       });
 
       await this.s3Client.send(command);
+      logger.info('S3 image deleted', {
+        key,
+        durationMs: Date.now() - startedAt,
+      });
       return true;
     } catch (error) {
-      console.error('Error al eliminar imagen de S3:', error);
+      logger.error('S3 image deletion failed', {
+        key,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
       return false;
     }
   }
@@ -164,7 +229,15 @@ export class ImageS3Service {
 
       await this.s3Client.send(command);
       return true;
-    } catch {
+    } catch (error) {
+      const statusCode = (error as any)?.$metadata?.httpStatusCode;
+      if (statusCode !== 404) {
+        logger.warn('S3 image existence check failed', {
+          key,
+          providerStatus: statusCode,
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
       return false;
     }
   }

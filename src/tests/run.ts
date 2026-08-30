@@ -17,6 +17,9 @@ import {
   requireAdminForRoleChange,
   requireSelfOrAdmin,
 } from "../middlewares/authorization";
+import { logger } from "../utils/logger";
+import { RequestLogger } from "../utils/requestLogger";
+import { getHttpStatusForError } from "../utils/errorClassification";
 
 type TestCase = { name: string; run: () => void | Promise<void> };
 const tests: TestCase[] = [];
@@ -280,6 +283,82 @@ test("JWT rechaza configuración débil y conserva accountType", () => {
     if (previousSecret === undefined) delete process.env.JWT_SECRET;
     else process.env.JWT_SECRET = previousSecret;
   }
+});
+
+test("el logger redacta secretos y enmascara emails", () => {
+  const originalError = console.error;
+  const lines: string[] = [];
+  console.error = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+
+  try {
+    logger.error("Sensitive log test", {
+      password: "NeverLogThisPassword",
+      token: "NeverLogThisToken",
+      authorization: "Bearer NeverLogThisAuthorization",
+      email: "ana@example.com",
+      nested: { resetUrl: "https://example.com/reset/private-token" },
+      error: new Error(
+        "Provider failed for raw@example.com with Bearer EmbeddedSecret at https://example.com/callback?token=QuerySecret"
+      ),
+    });
+  } finally {
+    console.error = originalError;
+  }
+
+  const output = lines.join("\n");
+  assert.ok(output.includes("[REDACTED]"));
+  assert.ok(output.includes("an***@example.com"));
+  assert.equal(output.includes("NeverLogThisPassword"), false);
+  assert.equal(output.includes("NeverLogThisToken"), false);
+  assert.equal(output.includes("NeverLogThisAuthorization"), false);
+  assert.equal(output.includes("private-token"), false);
+  assert.equal(output.includes("ana@example.com"), false);
+  assert.equal(output.includes("raw@example.com"), false);
+  assert.equal(output.includes("EmbeddedSecret"), false);
+  assert.equal(output.includes("QuerySecret"), false);
+});
+
+test("los rechazos esperables se clasifican sin duplicar el fallo", () => {
+  const request = {
+    method: "POST",
+    path: "/api/items",
+    user: { sub: "7", role: "Free" },
+  } as any;
+  const rejection = new ApiError("Límite alcanzado", 403, {
+    code: "FREE_PLAN_ITEM_LIMIT",
+  });
+  const originalWarn = console.warn;
+  console.warn = () => undefined;
+
+  try {
+    new RequestLogger(request).failure(
+      "Item creation rejected",
+      rejection
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(getHttpStatusForError(rejection), 403);
+  assert.equal(request.failureLogged, true);
+});
+
+test("el request conserva la ruta completa para el log de finalización", () => {
+  const request = {
+    method: "POST",
+    path: "/api/items",
+    baseUrl: "",
+  } as any;
+
+  new RequestLogger(request);
+  request.baseUrl = "/api/items";
+  request.route = { path: "/" };
+  new RequestLogger(request);
+  request.baseUrl = "";
+
+  assert.equal(request.logRoute, "/api/items/");
 });
 
 async function main() {

@@ -5,6 +5,7 @@ import sequelize from "../utils/databaseService";
 import { PasswordResetToken } from "../models/PasswordResetToken";
 import { User } from "../models/User";
 import { ApiError } from "../utils/ApiError";
+import { logger } from "../utils/logger";
 
 const INVITE_TTL_HOURS = parseInt(process.env.PASSWORD_RESET_INVITE_HOURS ?? "24", 10);
 const TOKEN_LENGTH_BYTES = 32;
@@ -16,12 +17,14 @@ class PasswordReset {
     const tokenRaw = crypto.randomBytes(TOKEN_LENGTH_BYTES).toString("hex");
     const tokenHash = await argon2.hash(tokenRaw);
     const expiresAt = new Date(Date.now() + this.ttlMs);
+    let invalidatedTokens = 0;
 
     await sequelize.transaction(async (transaction) => {
-      await PasswordResetToken.update(
+      const [affectedRows] = await PasswordResetToken.update(
         { isUsed: true },
         { where: { userId: user.id, isUsed: false }, transaction }
       );
+      invalidatedTokens = affectedRows;
 
       await PasswordResetToken.create(
         {
@@ -34,12 +37,21 @@ class PasswordReset {
       );
     });
 
+    logger.info("Password reset token issued", {
+      userId: user.id,
+      expiresAt: expiresAt.toISOString(),
+      invalidatedTokens,
+    });
+
     return tokenRaw;
   }
 
   async verifyAndConsumeToken(tokenRaw: string): Promise<User> {
     const token = await this.findMatchingActiveToken(tokenRaw);
     if (!token || !token.user) {
+      logger.warn("Password reset token rejected", {
+        reason: "invalid_expired_or_used",
+      });
       throw new ApiError("Token inválido o expirado", 400);
     }
 
@@ -58,11 +70,20 @@ class PasswordReset {
       );
     });
 
+    logger.info("Password reset token consumed", {
+      userId: token.userId,
+      resetTokenId: token.id,
+    });
+
     return token.user!;
   }
 
   async isTokenValid(tokenRaw: string): Promise<boolean> {
     const match = await this.findMatchingActiveToken(tokenRaw);
+    logger.debug("Password reset token verification completed", {
+      valid: Boolean(match),
+      userId: match?.userId,
+    });
     return Boolean(match);
   }
 

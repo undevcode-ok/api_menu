@@ -137,3 +137,27 @@ npm run test:e2e
 
 La prueba E2E usa HTTP real y MySQL. Por seguridad se niega a ejecutarse salvo
 que `DB_NAME=api_menu_e2e`; recrea únicamente las tablas de esa base.
+
+## Logs y diagnóstico
+
+La API emite logs estructurados a stdout/stderr con `requestId`, ruta, estado,
+duración, usuario y tenant cuando están disponibles. El header de respuesta
+`x-request-id` permite buscar en los logs una petición reportada por el frontend.
+
+Configuración recomendada para producción:
+
+```env
+LOG_LEVEL=info
+HTTP_LOGGING_ENABLED=true
+SLOW_REQUEST_MS=1500
+LOG_STACKS=false
+```
+
+- `LOG_LEVEL`: `debug`, `info`, `warn` o `error`.
+- `HTTP_LOGGING_ENABLED`: permite desactivar solamente el resumen de requests.
+- `SLOW_REQUEST_MS`: duración desde la cual una petición se registra como lenta.
+- `LOG_STACKS`: habilitar stacks completos sólo temporalmente para diagnóstico.
+
+Contraseñas, JWT, tokens de recuperación, credenciales, cookies, links sensibles
+y emails completos se redactan o enmascaran automáticamente. No registrar bodies
+completos, buffers ni headers de autorización desde código nuevo.

@@ -5,6 +5,7 @@ import { UploadImageResult, ImageProcessOptions, UploadedFile } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { logger } from '../../utils/logger';
+import { ApiError } from '../../utils/ApiError';
 
 function sourceHost(imageUrl: string) {
   try {
@@ -44,7 +45,9 @@ export class ImageS3Service {
         inputBytes: file.buffer.length,
         mimeType: file.mimetype,
       });
-      throw new Error('El archivo proporcionado no es una imagen válida');
+      throw new ApiError('El archivo proporcionado no es una imagen válida', 400, {
+        code: 'IMAGE_FILE_CONTENT_INVALID',
+      });
     }
 
     // Convertir a WebP

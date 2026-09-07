@@ -3,13 +3,29 @@ import { URL } from "url";
 import { ApiError } from "../utils/ApiError";
 import { Image as ImageM, ImageCreationAttributes } from "../models/Image";
 import ItemImage from "../models/ItemImage";
+import { ImageUploadEvent } from "../models/ImageUploadEvent";
 import { Menu as MenuM } from "../models/Menu";
 import { Item as ItemM } from "../models/Item";
 import { Category as CategoryM } from "../models/Category";
 import sequelize from "../utils/databaseService";
 import { ImageS3Service } from "../s3-image-module";
 import { CreateImageDto, UpdateImageDto } from "../dtos/image.dto";
-import { assertCanMutateImages } from "./accountPolicyService";
+import {
+  assertCanMutateImages,
+  getAccountEntitlements,
+} from "./accountPolicyService";
+import { logger } from "../utils/logger";
+
+type CompletedFileUpload = {
+  key: string;
+  sourceSizeBytes: number;
+  sourceMimeType: string;
+};
+
+type ResolvedImage = {
+  url: string;
+  upload?: CompletedFileUpload;
+};
 
 /* ============================================================
    Helpers base
@@ -32,7 +48,7 @@ async function resolveImageUrl(
   img: { url?: string; fileField?: string },
   folder: string,
   files?: Express.Multer.File[]
-): Promise<string> {
+): Promise<ResolvedImage> {
   try {
     const file = pickFile(files, img.fileField);
 
@@ -48,11 +64,18 @@ async function resolveImageUrl(
         });
       }
 
-      return up.url;
+      return {
+        url: up.url,
+        upload: {
+          key: up.key,
+          sourceSizeBytes: file.size,
+          sourceMimeType: file.mimetype,
+        },
+      };
     }
 
     // Si no hay archivo pero sí url -> usamos url
-    if (img.url) return img.url;
+    if (img.url) return { url: img.url };
 
     // ⬇⬇ Validación real: ni file ni url
     throw new ApiError("Debe venir url o fileField", 400, {
@@ -124,9 +147,14 @@ async function assertMenuBelongsToUser(menuId: number, userId: number) {
 }
 
 /** Item debe ser del usuario actual (Item -> Category -> Menu.userId) */
-async function assertItemBelongsToUser(itemId: number, userId: number) {
+async function assertItemBelongsToUser(
+  itemId: number,
+  userId: number,
+  transaction?: Transaction
+) {
   const item = await ItemM.findOne({
     where: { id: itemId, active: true },
+    transaction,
     include: [
       {
         model: CategoryM,
@@ -202,7 +230,11 @@ export const createImage = async (userId: number, data: CreateImageDto) => {
     throw new ApiError("Datos incompletos para crear imagen", 400);
   }
 
-  await assertCanMutateImages(userId, true);
+  await assertCanMutateImages(userId, {
+    scope: "menus",
+    fileUploads: 0,
+    urlMutations: 1,
+  });
   await assertMenuBelongsToUser(data.menuId, userId);
 
   return await ImageM.create(data as ImageCreationAttributes);
@@ -216,7 +248,11 @@ export const updateImage = async (
   if (!userId) throw new ApiError("ID de usuario (tenant) inválido", 400);
   if (!id) throw new ApiError("ID de imagen inválido", 400);
 
-  await assertCanMutateImages(userId, typeof data.url === "string");
+  await assertCanMutateImages(userId, {
+    scope: "menus",
+    fileUploads: 0,
+    urlMutations: typeof data.url === "string" ? 1 : 0,
+  });
 
   try {
     // 👇 NO filtramos por active
@@ -260,18 +296,20 @@ export const createItemImage = async (
   files?: Express.Multer.File[],
   t?: Transaction
 ) => {
-  const url = await resolveImageUrl(img, `items/${itemId}`, files);
+  const resolved = await resolveImageUrl(img, `items/${itemId}`, files);
 
-  return await ItemImage.create(
+  const image = await ItemImage.create(
     {
       itemId,
-      url,
+      url: resolved.url,
       alt: img.alt ?? null,
       sortOrder: img.sortOrder ?? 0,
       active: img.active ?? true,
     },
     { transaction: t }
   );
+
+  return { image, upload: resolved.upload };
 };
 
 export const updateItemImage = async (
@@ -282,20 +320,34 @@ export const updateItemImage = async (
 ) => {
   if (!img.id) throw new ApiError("ID de imagen requerido", 400);
 
+  const existingImage = await ItemImage.findOne({
+    where: { id: img.id, itemId },
+    transaction: t,
+    ...(t ? { lock: t.LOCK.UPDATE } : {}),
+  });
+  if (!existingImage) {
+    throw new ApiError("Imagen de ítem no encontrada", 404, {
+      code: "ITEM_IMAGE_NOT_FOUND",
+      itemId,
+      imageId: img.id,
+    });
+  }
+
   const patch: any = imageBasePatch(img);
 
   // Si vino nueva imagen (url o file), la subimos
   if (img.url || img.fileField) {
-    const url = await resolveImageUrl(img, `items/${itemId}`, files);
-    patch.url = url;
+    const resolved = await resolveImageUrl(img, `items/${itemId}`, files);
+    patch.url = resolved.url;
+
+    await existingImage.update(patch, { transaction: t });
+    return { upload: resolved.upload };
   }
 
-  if (Object.keys(patch).length === 0) return;
+  if (Object.keys(patch).length === 0) return {};
 
-  await ItemImage.update(patch, {
-    where: { id: img.id, itemId },
-    transaction: t,
-  });
+  await existingImage.update(patch, { transaction: t });
+  return {};
 };
 
 export const deleteItemImage = async (
@@ -320,34 +372,132 @@ export const deleteItemImage = async (
    C) UPSERT para listas de imágenes dentro de un ítem (multi-tenant)
    ============================================================ */
 
+function validateFileReferences(
+  images: any[],
+  files: Express.Multer.File[] | undefined
+) {
+  const receivedFiles = files ?? [];
+  const filesByField = new Map<string, Express.Multer.File[]>();
+
+  for (const file of receivedFiles) {
+    const entries = filesByField.get(file.fieldname) ?? [];
+    entries.push(file);
+    filesByField.set(file.fieldname, entries);
+  }
+
+  const referencedFields = new Set<string>();
+  for (const image of images) {
+    if (image?._delete === true || !image?.fileField) continue;
+    const field = String(image.fileField);
+    if (referencedFields.has(field)) {
+      throw new ApiError("Un archivo no puede usarse en más de una imagen.", 400, {
+        code: "IMAGE_FILE_REFERENCE_DUPLICATED",
+        field,
+      });
+    }
+
+    const matches = filesByField.get(field) ?? [];
+    if (matches.length === 0 || !matches[0].size) {
+      throw new ApiError("No se recibió el archivo indicado en fileField.", 400, {
+        code: "IMAGE_FILE_MISSING",
+        field,
+      });
+    }
+    if (matches.length > 1) {
+      throw new ApiError("Se recibió más de un archivo para el mismo fileField.", 400, {
+        code: "IMAGE_FILE_FIELD_DUPLICATED",
+        field,
+      });
+    }
+
+    referencedFields.add(field);
+  }
+
+  const unreferenced = receivedFiles.find(
+    (file) => !referencedFields.has(file.fieldname)
+  );
+  if (unreferenced) {
+    throw new ApiError("Se recibió un archivo no referenciado por el payload.", 400, {
+      code: "IMAGE_FILE_UNREFERENCED",
+      field: unreferenced.fieldname,
+    });
+  }
+
+  return referencedFields.size;
+}
+
 export const upsertItemImages = async (
   userId: number,
   itemId: number,
   images: any[],
   files?: Express.Multer.File[]
 ) => {
-  const hasImageMutation = images.some(
-    (image) =>
-      image?._delete !== true &&
-      (!image?.id || Boolean(image?.url) || Boolean(image?.fileField))
-  );
-  await assertCanMutateImages(userId, hasImageMutation);
+  const fileUploads = validateFileReferences(images, files);
+  const urlMutations = images.filter(
+    (image) => image?._delete !== true && Boolean(image?.url)
+  ).length;
+  const uploadedKeys: string[] = [];
 
   // 🛡 El ítem tiene que ser del usuario actual
-  await assertItemBelongsToUser(itemId, userId);
+  try {
+    await withTx(async (t) => {
+      await assertItemBelongsToUser(itemId, userId, t);
+      const authorization = await assertCanMutateImages(
+        userId,
+        {
+          scope: "items",
+          fileUploads,
+          urlMutations,
+        },
+        t
+      );
 
-  return await withTx(async (t) => {
-    for (const img of images) {
-      if (img._delete) {
-        await deleteItemImage(itemId, img.id, t);
-        continue;
-      }
+      for (const img of images) {
+        if (img._delete) {
+          await deleteItemImage(itemId, img.id, t);
+          continue;
+        }
 
-      if (img.id) {
-        await updateItemImage(itemId, img, files, t);
-      } else {
-        await createItemImage(itemId, img, files, t);
+        const result = img.id
+          ? await updateItemImage(itemId, img, files, t)
+          : await createItemImage(itemId, img, files, t);
+
+        if (!result.upload) continue;
+        uploadedKeys.push(result.upload.key);
+
+        if (authorization.trackUploads) {
+          await ImageUploadEvent.create(
+            {
+              userId,
+              itemId,
+              sourceSizeBytes: result.upload.sourceSizeBytes,
+              sourceMimeType: result.upload.sourceMimeType,
+            },
+            { transaction: t }
+          );
+        }
       }
+    });
+  } catch (error) {
+    for (const key of uploadedKeys) {
+      await ImageS3Service.deleteImage(key);
     }
-  });
+    throw error;
+  }
+
+  const account = await getAccountEntitlements(userId);
+  if (account.plan === "free" && fileUploads > 0) {
+    logger.info("Free image upload quota consumed", {
+      userId,
+      itemId,
+      uploadsAdded: fileUploads,
+      uploadsUsed: account.imagePolicy.uploadsUsed,
+      uploadsRemaining: account.imagePolicy.uploadsRemaining,
+    });
+  }
+
+  return {
+    ok: true,
+    account,
+  };
 };

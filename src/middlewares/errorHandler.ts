@@ -11,6 +11,10 @@ import {
   getErrorCode,
   getHttpStatusForError,
 } from "../utils/errorClassification";
+import {
+  IMAGE_MAX_FILE_SIZE_BYTES,
+  IMAGE_MAX_FILES_PER_REQUEST,
+} from "../policies/accountPolicy";
 
 export const errorHandler = (err: any, req: Request, res: Response, _next: NextFunction) => {
   const statusCode = getHttpStatusForError(err);
@@ -66,6 +70,29 @@ export const errorHandler = (err: any, req: Request, res: Response, _next: NextF
    * 3) Errores de archivos
    * ============================ */
   if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        message: "La imagen supera el tamaño máximo permitido de 5 MB.",
+        statusCode: 400,
+        details: {
+          code: "IMAGE_FILE_TOO_LARGE",
+          maxFileSizeBytes: IMAGE_MAX_FILE_SIZE_BYTES,
+          field: err.field,
+        },
+      });
+    }
+
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(400).json({
+        message: "Se enviaron demasiadas imágenes en una sola solicitud.",
+        statusCode: 400,
+        details: {
+          code: "IMAGE_FILE_COUNT_LIMIT",
+          maxFilesPerRequest: IMAGE_MAX_FILES_PER_REQUEST,
+        },
+      });
+    }
+
     return res.status(400).json({
       message: "Archivo inválido",
       details: {

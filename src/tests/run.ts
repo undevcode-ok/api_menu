@@ -7,6 +7,10 @@ import {
   assertMenuCreationWithinPlan,
   entitlementsForPlan,
   entitlementsForRoleName,
+  FREE_IMAGE_UPLOAD_LIMIT,
+  IMAGE_ALLOWED_EXTENSIONS,
+  IMAGE_ALLOWED_MIME_TYPES,
+  IMAGE_MAX_FILE_SIZE_BYTES,
   isAdminRoleName,
   isClientRoleName,
   planFromRoleName,
@@ -36,6 +40,32 @@ function expectPolicyError(run: () => void, code: string) {
     return true;
   });
 }
+
+function expectedFreeImagePolicy(used = 0) {
+  return {
+    lifetimeUploadLimit: FREE_IMAGE_UPLOAD_LIMIT,
+    uploadsUsed: used,
+    uploadsRemaining: FREE_IMAGE_UPLOAD_LIMIT - used,
+    maxFileSizeBytes: IMAGE_MAX_FILE_SIZE_BYTES,
+    allowedMimeTypes: IMAGE_ALLOWED_MIME_TYPES,
+    allowedExtensions: IMAGE_ALLOWED_EXTENSIONS,
+    scope: "items",
+    acceptsExternalUrls: false,
+    deletionRestoresQuota: false,
+  };
+}
+
+const expectedUnlimitedImagePolicy = {
+  lifetimeUploadLimit: null,
+  uploadsUsed: null,
+  uploadsRemaining: null,
+  maxFileSizeBytes: IMAGE_MAX_FILE_SIZE_BYTES,
+  allowedMimeTypes: IMAGE_ALLOWED_MIME_TYPES,
+  allowedExtensions: IMAGE_ALLOWED_EXTENSIONS,
+  scope: "all",
+  acceptsExternalUrls: true,
+  deletionRestoresQuota: false,
+};
 
 function fakeResponse() {
   return {
@@ -138,24 +168,76 @@ test("Free puede llegar a 20 ítems pero no superar el límite", () => {
   );
 });
 
-test("Free no puede crear o reemplazar imágenes", () => {
-  expectPolicyError(
-    () => assertImageMutationWithinPlan("free", true),
-    "FREE_PLAN_IMAGES_DISABLED"
+test("Free puede subir archivos de imagen solamente para platos", () => {
+  assert.doesNotThrow(() =>
+    assertImageMutationWithinPlan("free", {
+      scope: "items",
+      fileUploads: 1,
+      urlMutations: 0,
+      currentUploads: 0,
+    })
   );
-  assert.doesNotThrow(() => assertImageMutationWithinPlan("free", false));
-  assert.doesNotThrow(() => assertImageMutationWithinPlan("standard", true));
+  expectPolicyError(
+    () =>
+      assertImageMutationWithinPlan("free", {
+        scope: "menus",
+        fileUploads: 1,
+        urlMutations: 0,
+        currentUploads: 0,
+      }),
+    "FREE_PLAN_IMAGE_SCOPE_RESTRICTED"
+  );
+  expectPolicyError(
+    () =>
+      assertImageMutationWithinPlan("free", {
+        scope: "items",
+        fileUploads: 0,
+        urlMutations: 1,
+        currentUploads: 0,
+      }),
+    "FREE_PLAN_IMAGE_URL_NOT_ALLOWED"
+  );
 });
 
-test("las capacidades Free son estables para el frontend", () => {
-  assert.deepEqual(entitlementsForPlan("free"), {
+test("la cuota Free es histórica y no se recupera al borrar", () => {
+  assert.doesNotThrow(() =>
+    assertImageMutationWithinPlan("free", {
+      scope: "items",
+      fileUploads: 1,
+      urlMutations: 0,
+      currentUploads: 19,
+    })
+  );
+  expectPolicyError(
+    () =>
+      assertImageMutationWithinPlan("free", {
+        scope: "items",
+        fileUploads: 1,
+        urlMutations: 0,
+        currentUploads: 20,
+      }),
+    "FREE_PLAN_IMAGE_UPLOAD_LIMIT"
+  );
+  assert.doesNotThrow(() =>
+    assertImageMutationWithinPlan("standard", {
+      scope: "menus",
+      fileUploads: 100,
+      urlMutations: 100,
+      currentUploads: 100,
+    })
+  );
+});
+
+test("las capacidades Free informan cuota y consumo de imágenes", () => {
+  assert.deepEqual(entitlementsForPlan("free", 2), {
     plan: "free",
     limits: {
       menus: 1,
       categoriesPerMenu: 3,
       itemsPerMenu: 20,
-      images: false,
+      images: true,
     },
+    imagePolicy: expectedFreeImagePolicy(2),
   });
 });
 
@@ -168,6 +250,7 @@ test("las capacidades estándar informan el límite de 3 menús", () => {
       itemsPerMenu: null,
       images: true,
     },
+    imagePolicy: expectedUnlimitedImagePolicy,
   });
 });
 
@@ -181,6 +264,7 @@ test("solo el rol Client recibe el límite estándar de 3 menús", () => {
       itemsPerMenu: null,
       images: true,
     },
+    imagePolicy: expectedUnlimitedImagePolicy,
   });
 });
 
@@ -194,6 +278,7 @@ test("Admin conserva capacidades sin límites", () => {
       itemsPerMenu: null,
       images: true,
     },
+    imagePolicy: expectedUnlimitedImagePolicy,
   });
 });
 
@@ -206,6 +291,7 @@ test("User conserva capacidades sin límites", () => {
       itemsPerMenu: null,
       images: true,
     },
+    imagePolicy: expectedUnlimitedImagePolicy,
   });
 });
 

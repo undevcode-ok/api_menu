@@ -99,10 +99,15 @@ export const upsertItemImagesController = async (
       filesCount: files.length,
     });
 
-    await imageService.upsertItemImages(userId, itemId, images, files);
+    const result = await imageService.upsertItemImages(
+      userId,
+      itemId,
+      images,
+      files
+    );
     reqLogger.info("Item images upserted", { userId, itemId });
 
-    res.status(200).json({ ok: true });
+    res.status(200).json(result);
   } catch (e) {
     reqLogger.error("Failed to upsert item images", {
       error: errorMessage(e),

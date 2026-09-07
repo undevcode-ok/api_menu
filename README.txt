@@ -119,7 +119,13 @@ El servidor corre en: [http://localhost:3000](http://localhost:3000)
 - Un menú activo por cuenta.
 - Tres categorías como máximo por menú, incluyendo importaciones CSV.
 - Veinte ítems como máximo por menú, incluyendo importaciones CSV.
-- No permite cargar ni vincular imágenes.
+- Permite hasta veinte cargas históricas de imágenes de platos, con un máximo
+  de 5 MiB por archivo. Solo acepta JPEG/JPG, PNG, GIF y WebP; no permite URLs,
+  logos ni fondos personalizados. Borrar o reemplazar no devuelve el cupo ya
+  consumido.
+
+El consumo histórico se guarda en `image_upload_events`. La tabla se crea con
+el `sequelize.sync()` existente al desplegar esta versión.
 
 El rol Client (rol 2 en producción) permite hasta tres menús activos; las
 categorías y los ítems siguen sin límite y las imágenes continúan habilitadas.

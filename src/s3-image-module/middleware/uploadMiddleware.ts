@@ -1,26 +1,27 @@
 import multer from 'multer';
 import { Request } from 'express';
+import { ApiError } from '../../utils/ApiError';
+import {
+  IMAGE_ALLOWED_EXTENSIONS,
+  IMAGE_ALLOWED_MIME_TYPES,
+  IMAGE_MAX_FILE_SIZE_BYTES,
+  IMAGE_MAX_FILES_PER_REQUEST,
+} from '../../policies/accountPolicy';
 
 /**
  * Tipos MIME permitidos para imágenes
  */
-const ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-];
+const ALLOWED_MIME_TYPES: readonly string[] = IMAGE_ALLOWED_MIME_TYPES;
 
 /**
  * Extensiones de archivo permitidas
  */
-const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+const ALLOWED_EXTENSIONS: readonly string[] = IMAGE_ALLOWED_EXTENSIONS;
 
 /**
- * Tamaño máximo de archivo: 4MB
+ * Tamaño máximo por archivo: 5MB
  */
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB en bytes
+export const MAX_FILE_SIZE = IMAGE_MAX_FILE_SIZE_BYTES;
 
 /**
  * Filtra archivos para permitir solo imágenes
@@ -33,8 +34,13 @@ const fileFilter = (
   // Verificar tipo MIME
   if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
     return callback(
-      new Error(
-        `Tipo de archivo no permitido. Solo se permiten: ${ALLOWED_MIME_TYPES.join(', ')}`
+      new ApiError(
+        `Tipo de archivo no permitido. Solo se permiten: ${ALLOWED_MIME_TYPES.join(', ')}`,
+        400,
+        {
+          code: 'IMAGE_FILE_TYPE_NOT_ALLOWED',
+          allowedMimeTypes: ALLOWED_MIME_TYPES,
+        }
       )
     );
   }
@@ -43,8 +49,13 @@ const fileFilter = (
   const fileExtension = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
   if (!ALLOWED_EXTENSIONS.includes(fileExtension)) {
     return callback(
-      new Error(
-        `Extensión de archivo no permitida. Solo se permiten: ${ALLOWED_EXTENSIONS.join(', ')}`
+      new ApiError(
+        `Extensión de archivo no permitida. Solo se permiten: ${ALLOWED_EXTENSIONS.join(', ')}`,
+        400,
+        {
+          code: 'IMAGE_FILE_EXTENSION_NOT_ALLOWED',
+          allowedExtensions: ALLOWED_EXTENSIONS,
+        }
       )
     );
   }
@@ -55,16 +66,16 @@ const fileFilter = (
 /**
  * Configuración de Multer para uploads de imágenes
  * - Storage: Memory (archivos en RAM como Buffer)
- * - Límite: 10MB por archivo
+ * - Límite: 5MB por archivo y hasta 20 archivos por solicitud
  * - Filtro: Solo imágenes
  */
 export const uploadMiddleware = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_FILE_SIZE,
-    files: 10,
+    files: IMAGE_MAX_FILES_PER_REQUEST,
     fields: 50,
-    parts: 60,
+    parts: 80,
   },
   fileFilter,
 });
@@ -112,7 +123,7 @@ export const handleMulterError = (
  */
 export function createUploadMiddleware(
   maxSize: number = MAX_FILE_SIZE,
-  allowedTypes: string[] = ALLOWED_MIME_TYPES
+  allowedTypes: readonly string[] = ALLOWED_MIME_TYPES
 ) {
   const customFileFilter = (
     req: Request,
@@ -121,8 +132,13 @@ export function createUploadMiddleware(
   ) => {
     if (!allowedTypes.includes(file.mimetype)) {
       return callback(
-        new Error(
-          `Tipo de archivo no permitido. Solo se permiten: ${allowedTypes.join(', ')}`
+        new ApiError(
+          `Tipo de archivo no permitido. Solo se permiten: ${allowedTypes.join(', ')}`,
+          400,
+          {
+            code: 'IMAGE_FILE_TYPE_NOT_ALLOWED',
+            allowedMimeTypes: allowedTypes,
+          }
         )
       );
     }

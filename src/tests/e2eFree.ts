@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import mysql from "mysql2/promise";
+import sharp from "sharp";
 
 type Json = any;
 
@@ -47,12 +48,18 @@ async function main() {
     { setupAssociations },
     { loadSchemaLimits },
     { enableStrictMode },
+    { ImageS3Service },
+    { default: ItemImage },
+    { ImageUploadEvent },
   ] = await Promise.all([
     import("../app"),
     import("../utils/databaseService"),
     import("../models/associations"),
     import("../utils/schemaLimits"),
     import("../utils/sqlStrictMode"),
+    import("../s3-image-module"),
+    import("../models/ItemImage"),
+    import("../models/ImageUploadEvent"),
   ]);
 
   setupAssociations();
@@ -60,6 +67,10 @@ async function main() {
   await sequelize.sync({ force: true });
   await enableStrictMode();
   await loadSchemaLimits(["users", "payments", "roles"]);
+
+  const s3Client = (ImageS3Service as any).s3Client;
+  const originalS3Send = s3Client.send;
+  s3Client.send = async () => ({});
 
   const server = await new Promise<Server>((resolve) => {
     const running = app.listen(0, () => resolve(running));
@@ -136,7 +147,24 @@ async function main() {
       menus: 1,
       categoriesPerMenu: 3,
       itemsPerMenu: 20,
-      images: false,
+      images: true,
+    });
+    assert.deepEqual(registration.body.account.imagePolicy, {
+      lifetimeUploadLimit: 20,
+      uploadsUsed: 0,
+      uploadsRemaining: 20,
+      maxFileSizeBytes: 5 * 1024 * 1024,
+      allowedMimeTypes: [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+      ],
+      allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp"],
+      scope: "items",
+      acceptsExternalUrls: false,
+      deletionRestoresQuota: false,
     });
     assert.ok(registration.body.token);
     assert.ok(registration.body.user.subdomain);
@@ -300,8 +328,27 @@ async function main() {
       },
     });
     assert.equal(imageByUrl.status, 403);
-    assert.equal(imageByUrl.body.details.code, "FREE_PLAN_IMAGES_DISABLED");
-    ok("imagen por URL rechazada");
+    assert.equal(
+      imageByUrl.body.details.code,
+      "FREE_PLAN_IMAGE_SCOPE_RESTRICTED"
+    );
+    ok("imagen fuera de platos rechazada para Free");
+
+    const itemImageByUrl = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      {
+        token,
+        tenant: user.subdomain,
+        body: { images: [{ url: "https://example.com/image.jpg" }] },
+      }
+    );
+    assert.equal(itemImageByUrl.status, 403);
+    assert.equal(
+      itemImageByUrl.body.details.code,
+      "FREE_PLAN_IMAGE_URL_NOT_ALLOWED"
+    );
+    ok("URL externa de plato rechazada para Free");
 
     const imageForm = new FormData();
     imageForm.append(
@@ -318,9 +365,319 @@ async function main() {
       `/api/images/items/${firstItemId}`,
       { token, tenant: user.subdomain, body: imageForm }
     );
-    assert.equal(itemImage.status, 403);
-    assert.equal(itemImage.body.details.code, "FREE_PLAN_IMAGES_DISABLED");
-    ok("upload multipart de imagen rechazado antes de S3");
+    assert.equal(itemImage.status, 400);
+    assert.equal(itemImage.body.details.code, "IMAGE_FILE_CONTENT_INVALID");
+    assert.equal(await ImageUploadEvent.count({ where: { userId: user.id } }), 0);
+    ok("archivo con contenido falso rechazado sin consumir cuota");
+
+    const wrongMimeForm = new FormData();
+    wrongMimeForm.append(
+      "payload",
+      JSON.stringify({ images: [{ fileField: "wrongMime" }] })
+    );
+    wrongMimeForm.append(
+      "wrongMime",
+      new Blob([Buffer.from("not-an-image")], { type: "application/pdf" }),
+      "image.png"
+    );
+    const wrongMime = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: wrongMimeForm }
+    );
+    assert.equal(wrongMime.status, 400);
+    assert.equal(
+      wrongMime.body.details.code,
+      "IMAGE_FILE_TYPE_NOT_ALLOWED"
+    );
+    ok("MIME no permitido rechazado");
+
+    const wrongExtensionForm = new FormData();
+    wrongExtensionForm.append(
+      "payload",
+      JSON.stringify({ images: [{ fileField: "wrongExtension" }] })
+    );
+    wrongExtensionForm.append(
+      "wrongExtension",
+      new Blob([Buffer.from("not-an-image")], { type: "image/png" }),
+      "image.txt"
+    );
+    const wrongExtension = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: wrongExtensionForm }
+    );
+    assert.equal(wrongExtension.status, 400);
+    assert.equal(
+      wrongExtension.body.details.code,
+      "IMAGE_FILE_EXTENSION_NOT_ALLOWED"
+    );
+    ok("extensión no permitida rechazada");
+
+    const tooLargeForm = new FormData();
+    tooLargeForm.append(
+      "payload",
+      JSON.stringify({ images: [{ fileField: "tooLarge" }] })
+    );
+    tooLargeForm.append(
+      "tooLarge",
+      new Blob([Buffer.alloc(5 * 1024 * 1024 + 1)], { type: "image/png" }),
+      "too-large.png"
+    );
+    const tooLarge = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: tooLargeForm }
+    );
+    assert.equal(tooLarge.status, 400);
+    assert.equal(tooLarge.body.details.code, "IMAGE_FILE_TOO_LARGE");
+    assert.equal(tooLarge.body.details.maxFileSizeBytes, 5 * 1024 * 1024);
+    ok("imagen mayor a 5 MB rechazada");
+
+    const missingFileForm = new FormData();
+    missingFileForm.append(
+      "payload",
+      JSON.stringify({ images: [{ fileField: "missingFile" }] })
+    );
+    const missingFile = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: missingFileForm }
+    );
+    assert.equal(missingFile.status, 400);
+    assert.equal(missingFile.body.details.code, "IMAGE_FILE_MISSING");
+
+    const duplicateReferenceForm = new FormData();
+    duplicateReferenceForm.append(
+      "payload",
+      JSON.stringify({
+        images: [
+          { fileField: "sharedFile" },
+          { fileField: "sharedFile" },
+        ],
+      })
+    );
+    duplicateReferenceForm.append(
+      "sharedFile",
+      new Blob([Buffer.from("not-an-image")], { type: "image/png" }),
+      "shared.png"
+    );
+    const duplicateReference = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: duplicateReferenceForm }
+    );
+    assert.equal(duplicateReference.status, 400);
+    assert.equal(
+      duplicateReference.body.details.code,
+      "IMAGE_FILE_REFERENCE_DUPLICATED"
+    );
+
+    const unreferencedFileForm = new FormData();
+    unreferencedFileForm.append(
+      "payload",
+      JSON.stringify({ images: [{ fileField: "expectedFile" }] })
+    );
+    unreferencedFileForm.append(
+      "expectedFile",
+      new Blob([Buffer.from("not-an-image")], { type: "image/png" }),
+      "expected.png"
+    );
+    unreferencedFileForm.append(
+      "extraFile",
+      new Blob([Buffer.from("not-an-image")], { type: "image/png" }),
+      "extra.png"
+    );
+    const unreferencedFile = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: unreferencedFileForm }
+    );
+    assert.equal(unreferencedFile.status, 400);
+    assert.equal(
+      unreferencedFile.body.details.code,
+      "IMAGE_FILE_UNREFERENCED"
+    );
+
+    const duplicateFieldForm = new FormData();
+    duplicateFieldForm.append(
+      "payload",
+      JSON.stringify({ images: [{ fileField: "duplicatedFile" }] })
+    );
+    duplicateFieldForm.append(
+      "duplicatedFile",
+      new Blob([Buffer.from("one")], { type: "image/png" }),
+      "one.png"
+    );
+    duplicateFieldForm.append(
+      "duplicatedFile",
+      new Blob([Buffer.from("two")], { type: "image/png" }),
+      "two.png"
+    );
+    const duplicateField = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: duplicateFieldForm }
+    );
+    assert.equal(duplicateField.status, 400);
+    assert.equal(
+      duplicateField.body.details.code,
+      "IMAGE_FILE_FIELD_DUPLICATED"
+    );
+
+    const tooManyFilesForm = new FormData();
+    const tooManyFields = Array.from(
+      { length: 21 },
+      (_, index) => `tooMany${index}`
+    );
+    tooManyFilesForm.append(
+      "payload",
+      JSON.stringify({
+        images: tooManyFields.map((fileField) => ({ fileField })),
+      })
+    );
+    for (const field of tooManyFields) {
+      tooManyFilesForm.append(
+        field,
+        new Blob([Buffer.from("x")], { type: "image/png" }),
+        `${field}.png`
+      );
+    }
+    const tooManyFiles = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      { token, tenant: user.subdomain, body: tooManyFilesForm }
+    );
+    assert.equal(tooManyFiles.status, 400);
+    assert.equal(tooManyFiles.body.details.code, "IMAGE_FILE_COUNT_LIMIT");
+    assert.equal(await ImageUploadEvent.count({ where: { userId: user.id } }), 0);
+    ok("referencias multipart inválidas y exceso de archivos rechazados");
+
+    const validPng = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 4,
+        background: { r: 255, g: 0, b: 0, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const buildImageForm = (fields: string[]) => {
+      const form = new FormData();
+      form.append(
+        "payload",
+        JSON.stringify({
+          images: fields.map((fileField) => ({ fileField })),
+        })
+      );
+      for (const field of fields) {
+        form.append(
+          field,
+          new Blob([validPng], { type: "image/png" }),
+          `${field}.png`
+        );
+      }
+      return form;
+    };
+
+    const firstUpload = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      {
+        token,
+        tenant: user.subdomain,
+        body: buildImageForm(["dishImage1"]),
+      }
+    );
+    assert.equal(firstUpload.status, 200);
+    assert.equal(firstUpload.body.account.imagePolicy.uploadsUsed, 1);
+    assert.equal(firstUpload.body.account.imagePolicy.uploadsRemaining, 19);
+
+    const uploadedImage = await ItemImage.findOne({
+      where: { itemId: firstItemId },
+      order: [["id", "DESC"]],
+    });
+    assert.ok(uploadedImage);
+
+    const deleteUploadedImage = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      {
+        token,
+        tenant: user.subdomain,
+        body: { images: [{ id: uploadedImage.id, _delete: true }] },
+      }
+    );
+    assert.equal(deleteUploadedImage.status, 200);
+    assert.equal(deleteUploadedImage.body.account.imagePolicy.uploadsUsed, 1);
+    assert.equal(deleteUploadedImage.body.account.imagePolicy.uploadsRemaining, 19);
+    ok("borrar una imagen no devuelve cupo");
+
+    const secondUpload = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      {
+        token,
+        tenant: user.subdomain,
+        body: buildImageForm(["dishImage2"]),
+      }
+    );
+    assert.equal(secondUpload.status, 200);
+    assert.equal(secondUpload.body.account.imagePolicy.uploadsUsed, 2);
+
+    const remainingFields = Array.from(
+      { length: 17 },
+      (_, index) => `dishImage${index + 3}`
+    );
+    const fillQuota = await request(
+      "PUT",
+      `/api/images/items/${firstItemId}`,
+      {
+        token,
+        tenant: user.subdomain,
+        body: buildImageForm(remainingFields),
+      }
+    );
+    assert.equal(fillQuota.status, 200);
+    assert.equal(fillQuota.body.account.imagePolicy.uploadsUsed, 19);
+    assert.equal(fillQuota.body.account.imagePolicy.uploadsRemaining, 1);
+
+    const concurrentUploads = await Promise.all([
+      request("PUT", `/api/images/items/${firstItemId}`, {
+        token,
+        tenant: user.subdomain,
+        body: buildImageForm(["concurrentImageA"]),
+      }),
+      request("PUT", `/api/images/items/${firstItemId}`, {
+        token,
+        tenant: user.subdomain,
+        body: buildImageForm(["concurrentImageB"]),
+      }),
+    ]);
+    const successfulConcurrent = concurrentUploads.find(
+      (response) => response.status === 200
+    );
+    const rejectedConcurrent = concurrentUploads.find(
+      (response) => response.status === 403
+    );
+    assert.ok(successfulConcurrent);
+    assert.ok(rejectedConcurrent);
+    assert.equal(successfulConcurrent.body.account.imagePolicy.uploadsUsed, 20);
+    assert.equal(
+      rejectedConcurrent.body.details.code,
+      "FREE_PLAN_IMAGE_UPLOAD_LIMIT"
+    );
+    assert.equal(rejectedConcurrent.body.details.current, 20);
+    assert.equal(rejectedConcurrent.body.details.remaining, 0);
+    assert.equal(await ImageUploadEvent.count({ where: { userId: user.id } }), 20);
+    ok("la cuota concurrente acepta la carga 20 y rechaza la 21");
+
+    const meAfterImages = await request("GET", "/api/auth/me", { token });
+    assert.equal(meAfterImages.status, 200);
+    assert.equal(meAfterImages.body.account.imagePolicy.uploadsUsed, 20);
+    assert.equal(meAfterImages.body.account.imagePolicy.uploadsRemaining, 0);
+    ok("GET /api/auth/me devuelve el consumo actualizado de imágenes");
 
     const menuLogo = await request("PUT", `/api/menus/${firstMenuId}`, {
       token,
@@ -328,7 +685,10 @@ async function main() {
       body: { logo: "https://example.com/logo.png" },
     });
     assert.equal(menuLogo.status, 403);
-    assert.equal(menuLogo.body.details.code, "FREE_PLAN_IMAGES_DISABLED");
+    assert.equal(
+      menuLogo.body.details.code,
+      "FREE_PLAN_IMAGE_SCOPE_RESTRICTED"
+    );
     ok("logo por URL rechazado");
 
     const secondRegistration = await request(
@@ -575,6 +935,7 @@ async function main() {
 
     console.log("\nE2E de planes aprobado: HTTP real + MySQL");
   } finally {
+    s3Client.send = originalS3Send;
     await closeServer(server);
     await sequelize.close();
   }

@@ -6,6 +6,7 @@ import { Category as CategoryA } from "./Category";
 import { Image as ImageA } from "./Image";
 import { Item as ItemA } from "./Item";
 import ItemImage from "./ItemImage";
+import { ImageUploadEvent } from "./ImageUploadEvent";
 
 let associationsConfigured = false;
 
@@ -16,6 +17,17 @@ export const setupAssociations = () => {
     // User - Role
   Role.hasMany(User, { foreignKey: "roleId", as: "users" });
   User.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+
+  User.hasMany(ImageUploadEvent, {
+    foreignKey: "userId",
+    as: "imageUploadEvents",
+    onDelete: "CASCADE",
+  });
+  ImageUploadEvent.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+    onDelete: "CASCADE",
+  });
 
   // User - Payment  
   User.hasMany(Payment, { foreignKey: "userId", as: "payments" });

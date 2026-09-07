@@ -4,9 +4,11 @@ import { Item } from "../models/Item";
 import { Menu } from "../models/Menu";
 import { Role } from "../models/Role";
 import { User } from "../models/User";
+import { ImageUploadEvent } from "../models/ImageUploadEvent";
 import {
   AccountEntitlements,
   FREE_ROLE_NAME,
+  ImageMutationRequest,
   assertCategoryCreationWithinPlan,
   assertImageMutationWithinPlan,
   assertItemCreationWithinPlan,
@@ -59,10 +61,14 @@ export async function getAccountAuthorization(
 ) {
   const user = await findUserForPolicy(userId, transaction);
   const role = await roleForPolicy(user.roleId, transaction);
+  const plan = planFromRoleName(role.role);
+  const imageUploadsUsed = plan === "free"
+    ? await ImageUploadEvent.count({ where: { userId }, transaction })
+    : 0;
 
   return {
     role: role.role,
-    account: entitlementsForRoleName(role.role),
+    account: entitlementsForRoleName(role.role, imageUploadsUsed),
   };
 }
 
@@ -171,12 +177,33 @@ export async function assertCanCreateItems(
 
 export async function assertCanMutateImages(
   userId: number,
-  hasImageMutation: boolean,
+  mutation: Omit<ImageMutationRequest, "currentUploads">,
   transaction?: Transaction
 ) {
-  if (!hasImageMutation) return;
-  const user = await findUserForPolicy(userId, transaction);
+  const hasImageMutation = mutation.fileUploads > 0 || mutation.urlMutations > 0;
+  if (!hasImageMutation) {
+    return { plan: "standard" as const, trackUploads: false, currentUploads: 0 };
+  }
+
+  const user = await findUserForPolicy(userId, transaction, Boolean(transaction));
   const role = await roleForPolicy(user.roleId, transaction);
   const plan = planFromRoleName(role.role);
-  assertImageMutationWithinPlan(plan, hasImageMutation);
+  let currentUploads = 0;
+
+  if (plan === "free") {
+    const events = await ImageUploadEvent.findAll({
+      where: { userId },
+      attributes: ["id"],
+      transaction,
+      ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
+    });
+    currentUploads = events.length;
+  }
+
+  assertImageMutationWithinPlan(plan, { ...mutation, currentUploads });
+  return {
+    plan,
+    trackUploads: plan === "free",
+    currentUploads,
+  };
 }

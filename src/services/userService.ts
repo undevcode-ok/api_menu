@@ -16,6 +16,7 @@ import { passwordReset } from "./passwordResetService";
 import { emailService } from "./emailService";
 import { generateUserSubdomain } from "../utils/subdomain";
 import { getOrCreateFreeRole } from "./accountPolicyService";
+import { logger } from "../utils/logger";
 
 const RESET_TTL_MIN = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES ?? "1440", 10);
 const FRONTEND_INVITE_URL = (process.env.FRONTEND_INVITE_URL ?? "https://frontend.local/create").trim();
@@ -352,7 +353,7 @@ export const verifyResetToken = async (token: string): Promise<boolean> => {
   try {
     return await passwordReset.isTokenValid(token);
   } catch (e) {
-    console.error("Error verificando token:", e);
+    logger.error("Password reset token verification failed", { error: e });
     return false;
   }
 };

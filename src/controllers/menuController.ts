@@ -6,7 +6,7 @@ import { QrFormat, requestQr } from "../services/qrService";
 import { importMenuFromCsv } from "../services/menuImportService";
 import { RequestLogger } from "../utils/requestLogger";
 
-const errorMessage = (error: unknown) => (error instanceof Error ? error.message : "unknown");
+const errorMessage = (error: unknown) => error;
 
 /* ===========================
  * Controladores
@@ -161,7 +161,7 @@ export const getMenuQrUrl = async (req: Request, res: Response, next: NextFuncti
   } catch (e) {
     reqLogger.error("Failed to resolve QR target URL", {
       menuId: Number(req.params.id),
-      error: e instanceof Error ? e.message : "unknown",
+      error: e,
     });
     next(e);
   }
@@ -236,7 +236,7 @@ export const getMenuQr = async (req: Request, res: Response, next: NextFunction)
   } catch (e) {
     reqLogger.error("Failed to generate QR", {
       menuId: Number(req.params.id),
-      error: e instanceof Error ? e.message : "unknown",
+      error: e,
     });
     next(e);
   }
@@ -284,7 +284,7 @@ export const getPublicMenu = async (req: Request, res: Response, next: NextFunct
   } catch (e) {
     reqLogger.error("Failed to fetch public menu", {
       publicId: req.params.publicId ?? req.params.id,
-      error: e instanceof Error ? e.message : "unknown",
+      error: e,
     });
     next(e);
   }

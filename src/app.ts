@@ -16,7 +16,7 @@ import { tenantMiddleware } from "./middlewares/tenant";
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ exposedHeaders: ["x-request-id"] }));
 app.use(express.json());
 app.use(httpLogger);
 

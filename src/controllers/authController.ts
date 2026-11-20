@@ -20,7 +20,7 @@ type AuthTokenPayload = {
 };
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 async function buildAuthResult(user: User) {
   const authorization = await getAccountAuthorization(user.id);

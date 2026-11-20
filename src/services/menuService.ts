@@ -238,11 +238,17 @@ export const createMenu = async (
 
   try {
     return await sequelize.transaction(async (t: Transaction) => {
-      const hasImageMutation = Boolean(
-        files?.length || data.logo || data.backgroundImage
-      );
       const accountPlan = await assertCanCreateMenu(userId, t);
-      await assertCanMutateImages(userId, hasImageMutation, t);
+      await assertCanMutateImages(
+        userId,
+        {
+          scope: "menus",
+          fileUploads: files?.length ?? 0,
+          urlMutations:
+            Number(Boolean(data.logo)) + Number(Boolean(data.backgroundImage)),
+        },
+        t
+      );
 
       // Crear menú base
       const menu = await MenuM.create(
@@ -309,10 +315,16 @@ export const updateMenu = async (
         throw new ApiError("Menu not found", 404, { userId, id });
       }
 
-      const hasImageMutation = Boolean(
-        files?.length || data.logo || data.backgroundImage
+      await assertCanMutateImages(
+        userId,
+        {
+          scope: "menus",
+          fileUploads: files?.length ?? 0,
+          urlMutations:
+            Number(Boolean(data.logo)) + Number(Boolean(data.backgroundImage)),
+        },
+        t
       );
-      await assertCanMutateImages(userId, hasImageMutation, t);
       if (data.active === true && !menu.active) {
         await assertCanActivateMenu(userId, id, t);
       }

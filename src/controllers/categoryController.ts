@@ -3,7 +3,7 @@ import * as categoryService from "../services/categoryService";
 import { RequestLogger } from "../utils/requestLogger";
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 export const getAllCategories = async (req: RC, res: SC, next: NC) => {
   const reqLogger = new RequestLogger(req);

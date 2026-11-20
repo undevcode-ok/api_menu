@@ -119,7 +119,13 @@ El servidor corre en: [http://localhost:3000](http://localhost:3000)
 - Un menú activo por cuenta.
 - Tres categorías como máximo por menú, incluyendo importaciones CSV.
 - Veinte ítems como máximo por menú, incluyendo importaciones CSV.
-- No permite cargar ni vincular imágenes.
+- Permite hasta veinte cargas históricas de imágenes de platos, con un máximo
+  de 5 MiB por archivo. Solo acepta JPEG/JPG, PNG, GIF y WebP; no permite URLs,
+  logos ni fondos personalizados. Borrar o reemplazar no devuelve el cupo ya
+  consumido.
+
+El consumo histórico se guarda en `image_upload_events`. La tabla se crea con
+el `sequelize.sync()` existente al desplegar esta versión.
 
 El rol Client (rol 2 en producción) permite hasta tres menús activos; las
 categorías y los ítems siguen sin límite y las imágenes continúan habilitadas.
@@ -137,3 +143,27 @@ npm run test:e2e
 
 La prueba E2E usa HTTP real y MySQL. Por seguridad se niega a ejecutarse salvo
 que `DB_NAME=api_menu_e2e`; recrea únicamente las tablas de esa base.
+
+## Logs y diagnóstico
+
+La API emite logs estructurados a stdout/stderr con `requestId`, ruta, estado,
+duración, usuario y tenant cuando están disponibles. El header de respuesta
+`x-request-id` permite buscar en los logs una petición reportada por el frontend.
+
+Configuración recomendada para producción:
+
+```env
+LOG_LEVEL=info
+HTTP_LOGGING_ENABLED=true
+SLOW_REQUEST_MS=1500
+LOG_STACKS=false
+```
+
+- `LOG_LEVEL`: `debug`, `info`, `warn` o `error`.
+- `HTTP_LOGGING_ENABLED`: permite desactivar solamente el resumen de requests.
+- `SLOW_REQUEST_MS`: duración desde la cual una petición se registra como lenta.
+- `LOG_STACKS`: habilitar stacks completos sólo temporalmente para diagnóstico.
+
+Contraseñas, JWT, tokens de recuperación, credenciales, cookies, links sensibles
+y emails completos se redactan o enmascaran automáticamente. No registrar bodies
+completos, buffers ni headers de autorización desde código nuevo.

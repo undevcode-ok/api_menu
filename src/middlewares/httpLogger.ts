@@ -1,6 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import { randomUUID } from "crypto";
-import { isHttpLoggingEnabled, logger } from "../utils/logger";
+import {
+  isHttpLoggingEnabled,
+  logger,
+  slowRequestThresholdMs,
+} from "../utils/logger";
 
 declare global {
   namespace Express {
@@ -20,17 +24,45 @@ export const httpLogger = (req: Request, res: Response, next: NextFunction) => {
   }
 
   const startedAt = Date.now();
-  logger.info("HTTP request started", {
-    requestId,
-    method: req.method,
-    url: req.originalUrl,
+  let finished = false;
+
+  res.once("finish", () => {
+    finished = true;
+    const durationMs = Date.now() - startedAt;
+    const meta = {
+      requestId,
+      method: req.method,
+      route: req.logRoute ??
+        (req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path),
+      statusCode: res.statusCode,
+      durationMs,
+      userId: req.user?.sub,
+      role: req.user?.role,
+      tenantId: req.tenant?.id,
+    };
+
+    if (res.statusCode >= 500) {
+      logger.error("HTTP request completed", meta);
+    } else if (res.statusCode >= 400 || durationMs >= slowRequestThresholdMs) {
+      logger.warn("HTTP request completed", {
+        ...meta,
+        ...(durationMs >= slowRequestThresholdMs ? { slowRequest: true } : {}),
+      });
+    } else {
+      logger.info("HTTP request completed", meta);
+    }
   });
 
-  res.on("finish", () => {
-    logger.info("HTTP request completed", {
+  res.once("close", () => {
+    if (finished) return;
+    logger.warn("HTTP request aborted before response completed", {
       requestId,
-      statusCode: res.statusCode,
+      method: req.method,
+      route: req.logRoute ??
+        (req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path),
       durationMs: Date.now() - startedAt,
+      userId: req.user?.sub,
+      tenantId: req.tenant?.id,
     });
   });
 

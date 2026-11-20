@@ -3,7 +3,7 @@ import * as imageService from "../services/imageService";
 import { RequestLogger } from "../utils/requestLogger";
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 export const getAllImages = async (req: Request, res: Response, next: NextFunction) => {
   const reqLogger = new RequestLogger(req);
@@ -99,10 +99,15 @@ export const upsertItemImagesController = async (
       filesCount: files.length,
     });
 
-    await imageService.upsertItemImages(userId, itemId, images, files);
+    const result = await imageService.upsertItemImages(
+      userId,
+      itemId,
+      images,
+      files
+    );
     reqLogger.info("Item images upserted", { userId, itemId });
 
-    res.status(200).json({ ok: true });
+    res.status(200).json(result);
   } catch (e) {
     reqLogger.error("Failed to upsert item images", {
       error: errorMessage(e),

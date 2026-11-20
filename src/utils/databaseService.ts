@@ -1,6 +1,7 @@
 import { Sequelize } from 'sequelize';
 import dotenv from 'dotenv';
 import { addMenuWhatsAppPhone } from '../migrations/addMenuWhatsAppPhone';
+import { logger } from './logger';
 
 dotenv.config();
 
@@ -15,13 +16,27 @@ const sequelize = new Sequelize({
 });
 
 export const initDatabase = async () => {
+    const startedAt = Date.now();
+    logger.info('Database initialization started', {
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT),
+        database: process.env.DB_NAME,
+    });
     try {
         await sequelize.authenticate();
-        console.log('Conexión a la base de datos establecida correctamente.');
+        logger.info('Database connection established', {
+            durationMs: Date.now() - startedAt,
+        });
         await sequelize.sync({});
         await addMenuWhatsAppPhone(sequelize.getQueryInterface());
+        logger.info('Database schema synchronization completed', {
+            durationMs: Date.now() - startedAt,
+        });
     } catch (error) {
-        console.error('Error al conectar con la base de datos:', error);
+        logger.error('Database initialization failed', {
+            durationMs: Date.now() - startedAt,
+            error,
+        });
         throw error;
     }
 };

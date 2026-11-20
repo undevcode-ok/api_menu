@@ -3,7 +3,7 @@ import * as roleService from "../services/roleService";
 import { RequestLogger } from "../utils/requestLogger";
 
 const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "unknown";
+  error;
 
 export const getAllRoles = async (req: Request, res: Response, next: NextFunction) => {
   const reqLogger = new RequestLogger(req);

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import User from "../models/User";
 import { isAdminRequest } from "./requireAdmin";
+import { RequestLogger } from "../utils/requestLogger";
 
 declare global {
   namespace Express {
@@ -15,12 +16,16 @@ declare global {
 }
 
 export const tenantMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  const reqLogger = new RequestLogger(req);
   try {
     let subdomain: string | null =
       (req.get("x-tenant-subdomain") as string) ||
       ((req.query.tenant as string) ?? null);
 
     if (!subdomain) {
+      reqLogger.warn("Tenant resolution rejected", {
+        reason: "tenant_not_specified",
+      });
       return res.status(400).json({
         error: "Tenant not specified. Use x-tenant-subdomain header or ?tenant= param",
       });
@@ -34,6 +39,10 @@ export const tenantMiddleware = async (req: Request, res: Response, next: NextFu
     });
 
     if (!user) {
+      reqLogger.warn("Tenant resolution rejected", {
+        reason: "tenant_not_found_or_inactive",
+        subdomain,
+      });
       return res.status(404).json({ error: "User not found or inactive" });
     }
 
@@ -42,6 +51,14 @@ export const tenantMiddleware = async (req: Request, res: Response, next: NextFu
       !Number.isInteger(authenticatedUserId) ||
       (!isAdminRequest(req) && authenticatedUserId !== user.id)
     ) {
+      reqLogger.warn("Cross-tenant access rejected", {
+        reason: "tenant_owner_mismatch",
+        authenticatedUserId: Number.isInteger(authenticatedUserId)
+          ? authenticatedUserId
+          : undefined,
+        requestedTenantId: user.id,
+        requestedSubdomain: subdomain,
+      });
       return res.status(403).json({
         error: "No tenés permiso para operar sobre este tenant",
         details: { code: "TENANT_ACCESS_DENIED" },
@@ -54,9 +71,15 @@ export const tenantMiddleware = async (req: Request, res: Response, next: NextFu
       user,
     };
 
+    reqLogger.debug("Tenant resolved", {
+      tenantId: user.id,
+      subdomain: user.subdomain,
+      adminOverride: isAdminRequest(req) && authenticatedUserId !== user.id,
+    });
+
     next();
   } catch (error) {
-    console.error("Tenant middleware error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    reqLogger.failure("Tenant resolution failed", error);
+    next(error);
   }
 };

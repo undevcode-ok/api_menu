@@ -21,6 +21,7 @@ backgroundImage?: string | null;
 color?: MenuColor | null;
 
 pos?: string | null;
+whatsappPhone?: string | null;
 createdAt?: Date;
 updatedAt?: Date;
 }
@@ -39,6 +40,7 @@ public logo!: string | null;
 public backgroundImage!: string | null;
 public color!: MenuColor | null;
 public pos!: string | null;
+public whatsappPhone!: string | null;
 public readonly createdAt!: Date;
 public readonly updatedAt!: Date;
 }
@@ -55,6 +57,7 @@ logo: { type: DataTypes.STRING(255), allowNull: true, comment: "URL del logo" },
 backgroundImage: { type: DataTypes.STRING(255), allowNull: true, comment: "URL de imagen de fondo" },
 color: { type: DataTypes.JSON, allowNull: true, comment: "Objeto { primary, secondary } en HEX" },
 pos: { type: DataTypes.STRING(255), allowNull: true, comment: "Nombre o descripción de los puntos de venta" },
+whatsappPhone: { type: DataTypes.STRING(15), allowNull: true, defaultValue: null },
 },
 { sequelize, tableName: "menus", modelName: "Menu", timestamps: true,
   indexes: [

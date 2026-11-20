@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { registerWhatsAppTests } from "./whatsappOrder";
 import { registerFreeSchema } from "../validations/auth.validation";
 import {
   assertCategoryCreationWithinPlan,
@@ -281,6 +282,8 @@ test("JWT rechaza configuración débil y conserva accountType", () => {
     else process.env.JWT_SECRET = previousSecret;
   }
 });
+
+registerWhatsAppTests(test);
 
 async function main() {
   let passed = 0;

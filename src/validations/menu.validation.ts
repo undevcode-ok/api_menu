@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { whatsappPhoneSchema } from "./whatsapp.validation";
 import {
   emptyToNull,
   zRequiredString,
@@ -86,6 +87,7 @@ function normalizeBody(input: unknown) {
  * =========================== */
 
 const createBase = z.object({
+  whatsappPhone: whatsappPhoneSchema,
   title: zRequiredString("El título del menú", 120),
 
   active: zBooleanLoose,
@@ -107,6 +109,7 @@ export const createMenuSchema = z.preprocess(normalizeBody, createBase);
  * =========================== */
 
 const updateBase = z.object({
+  whatsappPhone: whatsappPhoneSchema,
   // si viene, no puede ser vacío ni solo espacios
   title: zRequiredString("El título del menú", 120).optional(),
 

@@ -12,6 +12,7 @@ export interface CreateMenuDto {
     backgroundImage?: string;
     color?: MenuColorDto;
     pos?: string | null;
+    whatsappPhone?: string | null;
  }
 
 
@@ -22,4 +23,5 @@ export interface UpdateMenuDto {
     backgroundImage?: string;
     color?: MenuColorDto;
     pos?: string | null;
+    whatsappPhone?: string | null;
 }

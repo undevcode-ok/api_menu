@@ -168,7 +168,7 @@ export const getPublicMenuByPublicId = async (publicId: string) => {
   try {
     const menu = await MenuM.findOne({
       where: { publicId, active: true },
-      attributes: ["id", "publicId", "title", "logo", "backgroundImage", "color", "pos", "active"],
+      attributes: ["id", "publicId", "title", "logo", "backgroundImage", "color", "pos", "active", "whatsappPhone"],
       include: [
         {
           model: Category,
@@ -321,6 +321,9 @@ export const updateMenu = async (
       if (typeof data.title === "string") patch.title = data.title;
       if (typeof data.active === "boolean") patch.active = data.active;
       if (typeof data.pos === "string" || data.pos === null) patch.pos = data.pos;
+      if (typeof data.whatsappPhone === "string" || data.whatsappPhone === null) {
+        patch.whatsappPhone = data.whatsappPhone;
+      }
       if (typeof data.color !== "undefined") patch.color = data.color;
 
       // Subir imágenes nuevas (si las mandan)

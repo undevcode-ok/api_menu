@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import mysql from "mysql2/promise";
+import { addMenuWhatsAppPhone } from "../migrations/addMenuWhatsAppPhone";
 
 type Json = any;
 
@@ -58,6 +59,10 @@ async function main() {
   setupAssociations();
   await sequelize.authenticate();
   await sequelize.sync({ force: true });
+  // Simulate an existing installation before the WhatsApp column was added.
+  await sequelize.getQueryInterface().removeColumn("menus", "whatsappPhone");
+  await addMenuWhatsAppPhone(sequelize.getQueryInterface());
+  await addMenuWhatsAppPhone(sequelize.getQueryInterface());
   await enableStrictMode();
   await loadSchemaLimits(["users", "payments", "roles"]);
 
@@ -256,6 +261,52 @@ async function main() {
       if (index === 1) firstItemId = item.body.id as number;
     }
     ok("20 ítems creados correctamente");
+
+    const publicPath = `/api/public/menus/${firstMenu.body.publicId}`;
+    const orderBody = { items: [{ itemId: firstItemId, quantity: 3 }], notes: "Sin picante & con limón" };
+    const disabledOrder = await request("POST", `${publicPath}/whatsapp-order`, { body: orderBody });
+    assert.equal(disabledOrder.status, 409);
+
+    const phoneForm = new FormData();
+    phoneForm.append("whatsappPhone", "+54 9 (11) 1234-5678");
+    const configuredPhone = await request("PUT", `/api/menus/${firstMenuId}`, { token, tenant: user.subdomain, body: phoneForm });
+    assert.equal(configuredPhone.status, 200);
+    assert.equal(configuredPhone.body.whatsappPhone, "5491112345678");
+    const publicMenu = await request("GET", publicPath);
+    assert.equal(publicMenu.status, 200);
+    assert.equal(publicMenu.body.whatsappPhone, "5491112345678");
+    assert.equal(publicMenu.body.userId, undefined);
+    ok("WhatsApp se guarda por multipart y está disponible en el menú público");
+
+    const order = await request("POST", `${publicPath}/whatsapp-order`, { body: orderBody });
+    assert.equal(order.status, 200);
+    assert.equal(order.body.totalCents, 30000);
+    assert.equal(new URL(order.body.whatsappUrl).searchParams.get("text"), order.body.message);
+    assert.match(order.body.message, /3 x Ítem 1/);
+    const manipulatedOrder = await request("POST", `${publicPath}/whatsapp-order`, { body: { ...orderBody, total: 1 } });
+    assert.equal(manipulatedOrder.status, 400);
+    const foreignItem = await request("POST", `${publicPath}/whatsapp-order`, { body: { items: [{ itemId: firstItemId + 10000, quantity: 1 }] } });
+    assert.equal(foreignItem.status, 409);
+    ok("pedido público sin login usa precios del servidor y rechaza productos ajenos");
+
+    const priceUpdate = await request("PUT", `/api/items/${firstItemId}`, { token, tenant: user.subdomain, body: { price: 150.50 } });
+    assert.equal(priceUpdate.status, 200);
+    const refreshedOrder = await request("POST", `${publicPath}/whatsapp-order`, { body: orderBody });
+    assert.equal(refreshedOrder.body.totalCents, 45150);
+
+    const hiddenItem = await request("PUT", `/api/items/${firstItemId}`, { token, tenant: user.subdomain, body: { active: false } });
+    assert.equal(hiddenItem.status, 200);
+    assert.equal((await request("POST", `${publicPath}/whatsapp-order`, { body: orderBody })).status, 409);
+    await request("PUT", `/api/items/${firstItemId}`, { token, tenant: user.subdomain, body: { active: true } });
+    await request("PUT", `/api/categories/${categoryId}`, { token, tenant: user.subdomain, body: { active: false } });
+    assert.equal((await request("POST", `${publicPath}/whatsapp-order`, { body: orderBody })).status, 409);
+    await request("PUT", `/api/categories/${categoryId}`, { token, tenant: user.subdomain, body: { active: true } });
+
+    const clearedPhone = await request("PUT", `/api/menus/${firstMenuId}`, { token, tenant: user.subdomain, body: { whatsappPhone: "" } });
+    assert.equal(clearedPhone.status, 200);
+    assert.equal(clearedPhone.body.whatsappPhone, null);
+    assert.equal((await request("POST", `${publicPath}/whatsapp-order`, { body: orderBody })).status, 409);
+    ok("el pedido respeta cambios de precio, disponibilidad y desactivación de WhatsApp");
 
     const twentyFirstItem = await request("POST", "/api/items", {
       token,

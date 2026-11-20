@@ -1,5 +1,6 @@
 import { Sequelize } from 'sequelize';
 import dotenv from 'dotenv';
+import { addMenuWhatsAppPhone } from '../migrations/addMenuWhatsAppPhone';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ export const initDatabase = async () => {
         await sequelize.authenticate();
         console.log('Conexión a la base de datos establecida correctamente.');
         await sequelize.sync({});
+        await addMenuWhatsAppPhone(sequelize.getQueryInterface());
     } catch (error) {
         console.error('Error al conectar con la base de datos:', error);
         throw error;
